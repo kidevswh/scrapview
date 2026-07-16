@@ -675,10 +675,16 @@ function fillPressContext() {
     return;
   }
 
+  const allowedPressIds = new Set(pressState.context.workplace?.allowedPressIds || []);
+  const availablePresses = allowedPressIds.size
+    ? pressState.context.presses.filter((press) => allowedPressIds.has(press.id))
+    : pressState.context.presses;
+
   pressUserSelect.innerHTML = '<option value="">Benutzer waehlen</option>' + pressState.context.users
     .map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`)
     .join('');
   pressWorkplaceSelect.innerHTML = '<option value="">Presse waehlen</option>' + pressState.context.presses
+    .filter((press) => availablePresses.some((available) => available.id === press.id))
     .map((press) => `<option value="${escapeHtml(press.id)}">${escapeHtml(press.label)}</option>`)
     .join('');
 
@@ -686,14 +692,16 @@ function fillPressContext() {
     pressUserSelect.value = pressState.selectedUser;
   }
 
-  if (pressState.selectedPress && pressState.context.presses.some((press) => press.id === pressState.selectedPress)) {
+  if (pressState.selectedPress && availablePresses.some((press) => press.id === pressState.selectedPress)) {
     pressWorkplaceSelect.value = pressState.selectedPress;
   }
 
-  if (!pressWorkplaceSelect.value && pressState.context.presses[0]) {
-    pressWorkplaceSelect.value = pressState.context.presses[0].id;
+  if (!pressWorkplaceSelect.value && availablePresses[0]) {
+    pressWorkplaceSelect.value = availablePresses[0].id;
     pressState.selectedPress = pressWorkplaceSelect.value;
   }
+
+  pressWorkplaceSelect.disabled = allowedPressIds.size === 1;
 }
 
 async function loadPressContext() {
@@ -769,10 +777,12 @@ function renderPressBoard() {
           <h3>${escapeHtml(press.label)}</h3>
           <span>${selectedPress() === press.id ? 'Dieser Arbeitsplatz' : 'Live-Status'}</span>
         </div>
-        <strong class="pressStatus">${escapeHtml(pressStatusLabel(activeRun?.status))}</strong>
+        <div class="pressCardTools">
+          <strong class="pressStatus">${escapeHtml(pressStatusLabel(activeRun?.status))}</strong>
+          <button type="button" class="historyButton" data-action="history" data-press-id="${escapeHtml(press.id)}">History</button>
+        </div>
       </header>
       ${activeRun ? renderActiveRun(press, activeRun, canOperate) : renderOrderPicker(press, canOperate)}
-      ${renderPressHistory(press.history || [])}
     `;
 
     pressBoard.appendChild(card);
@@ -858,29 +868,62 @@ function renderOrderAutocomplete(pressId, orders) {
   `;
 }
 
-function renderPressHistory(history) {
+function renderPressHistoryRows(history) {
+  if (!history.length) {
+    return '<p>Noch keine abgeschlossenen Auftraege.</p>';
+  }
+
   return `
-    <section class="pressHistory">
-      <h4>Historie</h4>
-      ${history.length ? `
-        <table>
-          <thead>
-            <tr><th>Auftrag</th><th>Start</th><th>Ende</th><th>Dauer</th></tr>
-          </thead>
-          <tbody>
-            ${history.map((run) => `
-              <tr>
-                <td><strong>${escapeHtml(run.orderId)}</strong><small>${escapeHtml(run.material || '')}</small></td>
-                <td>${escapeHtml(dateLabel(run.startedAt))}</td>
-                <td>${escapeHtml(dateLabel(run.endedAt))}</td>
-                <td>${escapeHtml(durationLabel(run.elapsedMs))}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      ` : '<p>Noch keine abgeschlossenen Auftraege.</p>'}
+    <div class="pressHistoryList">
+      ${history.map((run) => `
+        <article>
+          <div>
+            <strong>${escapeHtml(run.orderId)}</strong>
+            <span>${escapeHtml(run.material || '-')}</span>
+          </div>
+          <dl>
+            <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
+            <div><dt>Ende</dt><dd>${escapeHtml(dateLabel(run.endedAt))}</dd></div>
+            <div><dt>Dauer</dt><dd>${escapeHtml(durationLabel(run.elapsedMs))}</dd></div>
+            <div><dt>Benutzer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+          </dl>
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
+function openPressHistory(pressId) {
+  const press = (pressState.snapshot.presses || []).find((item) => item.id === pressId);
+  if (!press) {
+    return;
+  }
+
+  document.querySelector('.pressHistoryBackdrop')?.remove();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pressHistoryBackdrop';
+  backdrop.innerHTML = `
+    <section class="pressHistoryDialog" role="dialog" aria-modal="true" aria-labelledby="pressHistoryTitle">
+      <header>
+        <div>
+          <span>History</span>
+          <h3 id="pressHistoryTitle">${escapeHtml(press.label)}</h3>
+        </div>
+        <button type="button" class="closeHistoryButton" data-action="close-history">Schliessen</button>
+      </header>
+      ${renderPressHistoryRows(press.history || [])}
     </section>
   `;
+
+  const close = () => backdrop.remove();
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop || event.target.closest('[data-action="close-history"]')) {
+      close();
+    }
+  });
+
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('[data-action="close-history"]')?.focus();
 }
 
 function updatePressTimers() {
@@ -968,6 +1011,11 @@ function setupPressEvents() {
           pressState.orderQueries[pressId] = `${order.id} ${order.material || ''}`.trim();
           renderPressBoard();
         }
+        return;
+      }
+
+      if (action === 'history') {
+        openPressHistory(pressId);
         return;
       }
 

@@ -393,20 +393,20 @@ input[type="range"] {
 
 .pressBoard {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+  gap: 10px;
 }
 
 .pressCard {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
   border: 1px solid var(--line);
   border-left: 6px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: 12px;
 }
 
 .pressCard.isWorkplace {
@@ -425,22 +425,30 @@ input[type="range"] {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .pressCardHeader h3 {
   margin: 0;
-  font-size: 21px;
+  font-size: 18px;
 }
 
 .pressCardHeader span,
 .pressHint,
 .activeRun small,
-.pressHistory p,
-.pressHistory small {
+.pressHistoryDialog p,
+.pressHistoryList span {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.pressCardTools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .pressStatus {
@@ -448,14 +456,29 @@ input[type="range"] {
   border-radius: 999px;
   background: #edf7fb;
   color: var(--accent-2);
-  font-size: 13px;
-  padding: 6px 10px;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.historyButton {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--accent-2);
+  font-size: 12px;
+  padding: 7px 9px;
+}
+
+.historyButton:hover,
+.historyButton:focus {
+  border-color: var(--accent);
+  background: #edf7fb;
+  color: var(--accent-2);
 }
 
 .activeRun,
 .orderPicker {
   display: grid;
-  gap: 12px;
+  gap: 9px;
 }
 
 .orderAutocomplete {
@@ -535,7 +558,7 @@ input[type="range"] {
 .activeRun strong {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .runTimer {
@@ -543,17 +566,17 @@ input[type="range"] {
   border-radius: 8px;
   background: #f8fbfd;
   color: var(--text);
-  font-size: clamp(30px, 5vw, 52px);
+  font-size: clamp(28px, 3vw, 40px);
   font-weight: 800;
   letter-spacing: 0;
-  padding: 12px;
+  padding: 8px;
   text-align: center;
 }
 
 .runFacts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 7px;
   margin: 0;
 }
 
@@ -561,7 +584,7 @@ input[type="range"] {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 8px;
+  padding: 7px;
 }
 
 .runFacts dt {
@@ -580,7 +603,12 @@ input[type="range"] {
 .runActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
+}
+
+.runActions button,
+.orderPicker > button {
+  padding: 9px 11px;
 }
 
 .warnButton {
@@ -599,41 +627,108 @@ input[type="range"] {
   background: #b9151b;
 }
 
-.pressHistory {
+.pressHistoryBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
   display: grid;
-  gap: 8px;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
+  place-items: center;
+  background: rgba(20, 40, 55, 0.42);
+  padding: 18px;
 }
 
-.pressHistory h4 {
-  margin: 0;
-  font-size: 14px;
+.pressHistoryDialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(760px, 100%);
+  max-height: min(720px, calc(100vh - 36px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(20, 40, 55, 0.22);
+  padding: 16px;
 }
 
-.pressHistory table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.pressHistory th,
-.pressHistory td {
+.pressHistoryDialog header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
   border-bottom: 1px solid var(--line);
-  padding: 7px 5px;
-  text-align: left;
-  vertical-align: top;
+  padding-bottom: 12px;
 }
 
-.pressHistory th {
-  color: var(--muted);
-  font-size: 11px;
+.pressHistoryDialog header span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
-.pressHistory td strong,
-.pressHistory td small {
+.pressHistoryDialog h3 {
+  margin: 3px 0 0;
+  font-size: 22px;
+}
+
+.closeHistoryButton {
+  background: var(--warn);
+  padding: 9px 12px;
+}
+
+.closeHistoryButton:hover,
+.closeHistoryButton:focus {
+  background: #b9151b;
+}
+
+.pressHistoryList {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-top: 12px;
+}
+
+.pressHistoryList article {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.8fr);
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 10px;
+}
+
+.pressHistoryList article > div {
+  min-width: 0;
+}
+
+.pressHistoryList strong,
+.pressHistoryList span {
   display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pressHistoryList dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.pressHistoryList dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pressHistoryList dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .chartWrap {
@@ -788,6 +883,12 @@ input[type="range"] {
   font-weight: 700;
 }
 
+@media (max-width: 1100px) {
+  .pressBoard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 820px) {
   .topbar,
   .panelHeader,
@@ -818,5 +919,10 @@ input[type="range"] {
 
   .brandLogo {
     width: min(280px, 100%);
+  }
+
+  .pressHistoryList article,
+  .pressHistoryList dl {
+    grid-template-columns: 1fr;
   }
 }

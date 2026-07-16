@@ -23,12 +23,44 @@ function requestPayload(): array
     return is_array($payload) ? $payload : [];
 }
 
+function clientHostname(): string
+{
+    $candidates = [
+        $_SERVER['HTTP_X_WORKSTATION_HOST'] ?? '',
+        $_SERVER['HTTP_X_CLIENT_HOSTNAME'] ?? '',
+        $_SERVER['REMOTE_HOST'] ?? '',
+    ];
+
+    $remoteAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    if ($remoteAddress !== '') {
+        $resolved = gethostbyaddr($remoteAddress);
+        $candidates[] = $resolved !== false ? $resolved : '';
+        $candidates[] = $remoteAddress;
+    }
+
+    foreach ($candidates as $candidate) {
+        $candidate = trim((string) $candidate);
+        if ($candidate === '') {
+            continue;
+        }
+
+        $candidate = preg_replace('/:\d+$/', '', $candidate) ?: $candidate;
+        $candidate = preg_replace('/[^a-zA-Z0-9._-]/', '', $candidate) ?: $candidate;
+
+        return strtoupper($candidate);
+    }
+
+    return '';
+}
+
 try {
     $demoMode = (getenv('APP_DEMO') ?: 'true') === 'true';
     $repository = new PressJobRepository(
         $demoMode ? null : Database::connect(),
         $demoMode,
-        getenv('PRESS_LOIPRO_TABLE') ?: 'sapdata.dbo.LOIPRO'
+        getenv('PRESS_LOIPRO_TABLE') ?: 'sapdata.dbo.LOIPRO',
+        getenv('PRESS_WORKPLACE_TABLE') ?: 'dbo.press_workplace_assignments',
+        clientHostname()
     );
     $action = $_GET['action'] ?? 'snapshot';
 

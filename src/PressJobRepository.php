@@ -25,11 +25,14 @@ final class PressJobRepository
     private const END_COLUMNS = ['GLTRP', 'END_DATE', 'PLANNED_END', 'ENDDATUM'];
 
     private ?bool $databaseStateAvailable = null;
+    private ?bool $workplaceMappingsAvailable = null;
 
     public function __construct(
         private readonly ?PDO $pdo,
         private readonly bool $demoMode = false,
-        private readonly string $loiproTable = 'sapdata.dbo.LOIPRO'
+        private readonly string $loiproTable = 'sapdata.dbo.LOIPRO',
+        private readonly string $workplaceTable = 'dbo.press_workplace_assignments',
+        private readonly string $clientHostname = ''
     ) {}
 
     public function context(): array
@@ -37,6 +40,7 @@ final class PressJobRepository
         return [
             'presses' => $this->presses(),
             'users' => $this->users(),
+            'workplace' => $this->workplaceContext(),
         ];
     }
 
@@ -94,6 +98,7 @@ final class PressJobRepository
     public function start(string $pressId, array $order, string $user): array
     {
         $this->assertPress($pressId);
+        $this->assertWorkplaceAccess($pressId);
         $user = $this->normalizeUser($user);
         $orderId = trim((string) ($order['id'] ?? ''));
 
@@ -175,6 +180,7 @@ final class PressJobRepository
     private function changeState(string $pressId, string $user, string $action): array
     {
         $this->assertPress($pressId);
+        $this->assertWorkplaceAccess($pressId);
         $user = $this->normalizeUser($user);
 
         if ($this->usesFileState()) {
@@ -462,6 +468,66 @@ final class PressJobRepository
         return $configured !== [] ? $configured : self::DEMO_USERS;
     }
 
+    private function workplaceContext(): array
+    {
+        $assignments = $this->workplaceAssignmentsForClient();
+
+        return [
+            'hostname' => $this->clientHostname,
+            'mappingAvailable' => $this->canUseWorkplaceMappings(),
+            'restricted' => $assignments !== [],
+            'allowedPressIds' => array_values(array_unique(array_column($assignments, 'pressId'))),
+            'assignments' => $assignments,
+        ];
+    }
+
+    private function assertWorkplaceAccess(string $pressId): void
+    {
+        $allowedPressIds = array_column($this->workplaceAssignmentsForClient(), 'pressId');
+
+        if ($allowedPressIds === []) {
+            return;
+        }
+
+        if (! in_array($pressId, $allowedPressIds, true)) {
+            throw new RuntimeException('Dieser Arbeitsplatz ist nicht fuer diese Presse freigegeben.');
+        }
+    }
+
+    private function workplaceAssignmentsForClient(): array
+    {
+        if (! $this->canUseWorkplaceMappings() || $this->clientHostname === '') {
+            return [];
+        }
+
+        $shortHostname = explode('.', $this->clientHostname)[0] ?? $this->clientHostname;
+        $statement = $this->pdo->prepare(
+            'select press_id, workplace_label
+             from ' . $this->qualifiedWorkplaceTable() . '
+             where is_active = 1
+               and upper(hostname) in (:hostname, :short_hostname)
+             order by press_id'
+        );
+        $statement->execute([
+            'hostname' => strtoupper($this->clientHostname),
+            'short_hostname' => strtoupper($shortHostname),
+        ]);
+
+        return array_values(array_filter(array_map(function (array $row): array {
+            $pressId = trim((string) ($row['press_id'] ?? ''));
+
+            if (! array_key_exists($pressId, self::PRESSES)) {
+                return [];
+            }
+
+            return [
+                'pressId' => $pressId,
+                'pressLabel' => self::PRESSES[$pressId],
+                'workplaceLabel' => trim((string) ($row['workplace_label'] ?? '')),
+            ];
+        }, $statement->fetchAll())));
+    }
+
     private function usesFileState(): bool
     {
         return $this->demoMode || ! $this->pdo || ! $this->canUseDatabaseState();
@@ -485,6 +551,38 @@ final class PressJobRepository
         }
 
         return $this->databaseStateAvailable;
+    }
+
+    private function canUseWorkplaceMappings(): bool
+    {
+        if ($this->demoMode || ! $this->pdo) {
+            return false;
+        }
+
+        if ($this->workplaceMappingsAvailable !== null) {
+            return $this->workplaceMappingsAvailable;
+        }
+
+        try {
+            $this->workplaceMappingsAvailable = $this->workplaceMappingTableExists();
+        } catch (Throwable) {
+            $this->workplaceMappingsAvailable = false;
+        }
+
+        return $this->workplaceMappingsAvailable;
+    }
+
+    private function workplaceMappingTableExists(): bool
+    {
+        $statement = $this->pdo->query(
+            "select case
+                when object_id(N'" . str_replace("'", "''", $this->workplaceObjectName()) . "', N'U') is null then 0
+                else 1
+             end as table_exists"
+        );
+        $row = $statement->fetch();
+
+        return (int) ($row['table_exists'] ?? 0) === 1;
     }
 
     private function assertPress(string $pressId): void
@@ -538,6 +636,25 @@ final class PressJobRepository
         return $this->quoteIdentifier($database) . '.' . $this->quoteIdentifier($schema) . '.' . $this->quoteIdentifier($table);
     }
 
+    private function qualifiedWorkplaceTable(): string
+    {
+        [$database, $schema, $table] = $this->workplaceTableParts();
+        $parts = [$this->quoteIdentifier($schema), $this->quoteIdentifier($table)];
+
+        if ($database !== '') {
+            array_unshift($parts, $this->quoteIdentifier($database));
+        }
+
+        return implode('.', $parts);
+    }
+
+    private function workplaceObjectName(): string
+    {
+        [$database, $schema, $table] = $this->workplaceTableParts();
+
+        return implode('.', array_filter([$database, $schema, $table], static fn (string $part): bool => $part !== ''));
+    }
+
     private function loiproTableParts(): array
     {
         $parts = array_values(array_filter(explode('.', $this->loiproTable), static fn (string $part): bool => trim($part) !== ''));
@@ -548,6 +665,21 @@ final class PressJobRepository
 
         if (count($parts) === 2) {
             return ['sapdata', $parts[0], $parts[1]];
+        }
+
+        return [$parts[count($parts) - 3], $parts[count($parts) - 2], $parts[count($parts) - 1]];
+    }
+
+    private function workplaceTableParts(): array
+    {
+        $parts = array_values(array_filter(explode('.', $this->workplaceTable), static fn (string $part): bool => trim($part) !== ''));
+
+        if (count($parts) === 1) {
+            return ['', 'dbo', $parts[0]];
+        }
+
+        if (count($parts) === 2) {
+            return ['', $parts[0], $parts[1]];
         }
 
         return [$parts[count($parts) - 3], $parts[count($parts) - 2], $parts[count($parts) - 1]];
