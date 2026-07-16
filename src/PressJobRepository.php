@@ -839,13 +839,17 @@ final class PressJobRepository
 
     private function nowIso(): string
     {
-        return date('c');
+        return (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format(DATE_ATOM);
     }
 
     private function dateValue(mixed $value): string
     {
         if ($value instanceof DateTimeInterface) {
-            return $value->format(DATE_ATOM);
+            $localValue = $value->format('Y-m-d H:i:s.u');
+
+            return (new DateTimeImmutable($localValue, $this->databaseTimezone()))
+                ->setTimezone(new DateTimeZone('UTC'))
+                ->format(DATE_ATOM);
         }
 
         $value = trim((string) $value);
@@ -854,9 +858,21 @@ final class PressJobRepository
             return '';
         }
 
-        $timestamp = strtotime($value);
+        try {
+            $timezone = preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/', $value)
+                ? null
+                : $this->databaseTimezone();
+            $date = new DateTimeImmutable($value, $timezone);
 
-        return $timestamp !== false ? date('c', $timestamp) : $value;
+            return $date->setTimezone(new DateTimeZone('UTC'))->format(DATE_ATOM);
+        } catch (Throwable) {
+            return $value;
+        }
+    }
+
+    private function databaseTimezone(): DateTimeZone
+    {
+        return new DateTimeZone(getenv('PRESS_DB_TIMEZONE') ?: 'Europe/Berlin');
     }
 
     private function millisBetween(string $start, string $end): int

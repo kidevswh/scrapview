@@ -63,10 +63,12 @@ Wichtige `.env`-Werte:
 PRESS_LOIPRO_TABLE="sapdata.dbo.LOIPRO"
 PRESS_WORKPLACE_TABLE="dbo.press_workplace_assignments"
 PRESS_ADMIN_CODE=1234
+PRESS_DB_TIMEZONE="Europe/Berlin"
 PRESS_USERS="Anlage 1,Anlage 2,Schichtfuehrer,Coda"
 ```
 
 Die Zuordnungen koennen in der Pressenansicht ueber `Admin` gepflegt werden. Der Dialog ist mit `PRESS_ADMIN_CODE` geschuetzt; der Wert muss vierstellig sein.
+SQL-Server-`datetime2`-Werte werden mit `PRESS_DB_TIMEZONE` interpretiert und als UTC-Zeit an den Browser gesendet.
 
 Die Arbeitsplatz-Zuordnungstabelle hat diese Struktur:
 
