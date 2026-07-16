@@ -62,8 +62,11 @@ Wichtige `.env`-Werte:
 ```env
 PRESS_LOIPRO_TABLE="sapdata.dbo.LOIPRO"
 PRESS_WORKPLACE_TABLE="dbo.press_workplace_assignments"
+PRESS_ADMIN_CODE=1234
 PRESS_USERS="Anlage 1,Anlage 2,Schichtfuehrer,Coda"
 ```
+
+Die Zuordnungen koennen in der Pressenansicht ueber `Admin` gepflegt werden. Der Dialog ist mit `PRESS_ADMIN_CODE` geschuetzt; der Wert muss vierstellig sein.
 
 Die Arbeitsplatz-Zuordnungstabelle hat diese Struktur:
 

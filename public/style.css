@@ -181,6 +181,26 @@ button:hover {
   margin-bottom: 20px;
 }
 
+.pressHeaderTools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pressHeaderTools button {
+  border: 1px solid var(--accent);
+  background: #ffffff;
+  color: var(--accent-2);
+  padding: 9px 12px;
+}
+
+.pressHeaderTools button:hover,
+.pressHeaderTools button:focus {
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .rangeControl {
   display: grid;
   gap: 16px;
@@ -731,6 +751,178 @@ input[type="range"] {
   font-weight: 700;
 }
 
+.pressAdminBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 40, 55, 0.42);
+  padding: 18px;
+}
+
+.pressAdminDialog {
+  display: grid;
+  gap: 14px;
+  width: min(980px, 100%);
+  max-height: min(820px, calc(100vh - 36px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(20, 40, 55, 0.22);
+  padding: 16px;
+}
+
+.pressAdminDialog header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.pressAdminDialog header span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pressAdminDialog h3 {
+  margin: 3px 0 0;
+  font-size: 22px;
+}
+
+.pressAdminCodeForm,
+.pressAdminForm {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+}
+
+.pressAdminCodeForm {
+  grid-template-columns: minmax(180px, 260px) auto;
+  justify-content: start;
+}
+
+.pressAdminForm {
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.7fr) minmax(160px, 1fr) auto auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 12px;
+}
+
+.pressAdminCodeForm label,
+.pressAdminForm label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pressAdminCodeForm input,
+.pressAdminForm input,
+.pressAdminForm select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.pressAdminCheck {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  min-height: 38px;
+}
+
+.pressAdminCheck input {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+.pressAdminFormActions,
+.pressAdminActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.secondaryButton {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.secondaryButton:hover,
+.secondaryButton:focus {
+  border-color: var(--accent);
+  background: #edf7fb;
+  color: var(--accent-2);
+}
+
+.dangerButton {
+  background: var(--warn);
+}
+
+.dangerButton:hover,
+.dangerButton:focus {
+  background: #b9151b;
+}
+
+.pressAdminError {
+  margin: 0;
+  border: 1px solid rgba(237, 28, 36, 0.25);
+  border-radius: 8px;
+  background: rgba(237, 28, 36, 0.08);
+  color: #9f1118;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.pressAdminEmpty {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.pressAdminTableWrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.pressAdminTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pressAdminTable th,
+.pressAdminTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.pressAdminTable th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.pressAdminTable tr:last-child td {
+  border-bottom: 0;
+}
+
 .chartWrap {
   position: relative;
   min-width: 0;
@@ -922,7 +1114,14 @@ input[type="range"] {
   }
 
   .pressHistoryList article,
-  .pressHistoryList dl {
+  .pressHistoryList dl,
+  .pressAdminCodeForm,
+  .pressAdminForm {
     grid-template-columns: 1fr;
+  }
+
+  .pressHeaderTools {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

@@ -44,6 +44,83 @@ final class PressJobRepository
         ];
     }
 
+    public function adminWorkplaceMappings(): array
+    {
+        $this->assertWorkplaceMappingTable();
+
+        $statement = $this->pdo->query(
+            'select id, hostname, press_id, workplace_label, is_active, created_at, updated_at
+             from ' . $this->qualifiedWorkplaceTable() . '
+             order by hostname, press_id, id'
+        );
+
+        return array_map(fn (array $row): array => $this->mapWorkplaceMapping($row), $statement->fetchAll());
+    }
+
+    public function saveWorkplaceMapping(array $payload): array
+    {
+        $this->assertWorkplaceMappingTable();
+
+        $id = (int) ($payload['id'] ?? 0);
+        $hostname = $this->normalizeHostname((string) ($payload['hostname'] ?? ''));
+        $pressId = trim((string) ($payload['pressId'] ?? ''));
+        $workplaceLabel = trim((string) ($payload['workplaceLabel'] ?? ''));
+        $isActive = ! empty($payload['isActive']) ? 1 : 0;
+
+        $this->assertPress($pressId);
+
+        if ($id > 0) {
+            $statement = $this->pdo->prepare(
+                'update ' . $this->qualifiedWorkplaceTable() . '
+                 set hostname = :hostname,
+                     press_id = :press_id,
+                     workplace_label = :workplace_label,
+                     is_active = :is_active,
+                     updated_at = sysdatetime()
+                 where id = :id'
+            );
+            $statement->execute([
+                'id' => $id,
+                'hostname' => $hostname,
+                'press_id' => $pressId,
+                'workplace_label' => $workplaceLabel,
+                'is_active' => $isActive,
+            ]);
+
+            return $this->adminWorkplaceMappings();
+        }
+
+        $statement = $this->pdo->prepare(
+            'insert into ' . $this->qualifiedWorkplaceTable() . ' (hostname, press_id, workplace_label, is_active)
+             values (:hostname, :press_id, :workplace_label, :is_active)'
+        );
+        $statement->execute([
+            'hostname' => $hostname,
+            'press_id' => $pressId,
+            'workplace_label' => $workplaceLabel,
+            'is_active' => $isActive,
+        ]);
+
+        return $this->adminWorkplaceMappings();
+    }
+
+    public function deleteWorkplaceMapping(int $id): array
+    {
+        $this->assertWorkplaceMappingTable();
+
+        if ($id <= 0) {
+            throw new InvalidArgumentException('Ungueltiger Zuordnungseintrag.');
+        }
+
+        $statement = $this->pdo->prepare(
+            'delete from ' . $this->qualifiedWorkplaceTable() . '
+             where id = :id'
+        );
+        $statement->execute(['id' => $id]);
+
+        return $this->adminWorkplaceMappings();
+    }
+
     public function orders(string $pressId, string $query = ''): array
     {
         $this->assertPress($pressId);
@@ -466,6 +543,41 @@ final class PressJobRepository
         $configured = array_values(array_filter(array_map('trim', explode(',', (string) (getenv('PRESS_USERS') ?: '')))));
 
         return $configured !== [] ? $configured : self::DEMO_USERS;
+    }
+
+    private function assertWorkplaceMappingTable(): void
+    {
+        if (! $this->canUseWorkplaceMappings()) {
+            throw new RuntimeException('Die Arbeitsplatz-Zuordnungstabelle ist nicht verfuegbar.');
+        }
+    }
+
+    private function normalizeHostname(string $hostname): string
+    {
+        $hostname = strtoupper(trim($hostname));
+        $hostname = preg_replace('/[^A-Z0-9._-]/', '', $hostname) ?: '';
+
+        if ($hostname === '') {
+            throw new InvalidArgumentException('Bitte einen Hostnamen angeben.');
+        }
+
+        return $hostname;
+    }
+
+    private function mapWorkplaceMapping(array $row): array
+    {
+        $pressId = trim((string) ($row['press_id'] ?? ''));
+
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'hostname' => trim((string) ($row['hostname'] ?? '')),
+            'pressId' => $pressId,
+            'pressLabel' => self::PRESSES[$pressId] ?? $pressId,
+            'workplaceLabel' => trim((string) ($row['workplace_label'] ?? '')),
+            'isActive' => (bool) ($row['is_active'] ?? false),
+            'createdAt' => $this->dateValue($row['created_at'] ?? ''),
+            'updatedAt' => $this->dateValue($row['updated_at'] ?? ''),
+        ];
     }
 
     private function workplaceContext(): array

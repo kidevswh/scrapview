@@ -23,6 +23,26 @@ function requestPayload(): array
     return is_array($payload) ? $payload : [];
 }
 
+function adminCode(): string
+{
+    $code = trim((string) (getenv('PRESS_ADMIN_CODE') ?: '1234'));
+
+    if (! preg_match('/^\d{4}$/', $code)) {
+        throw new RuntimeException('PRESS_ADMIN_CODE muss ein vierstelliger Code sein.');
+    }
+
+    return $code;
+}
+
+function requireAdminCode(): void
+{
+    $provided = trim((string) ($_SERVER['HTTP_X_PRESS_ADMIN_CODE'] ?? ''));
+
+    if (! hash_equals(adminCode(), $provided)) {
+        throw new InvalidArgumentException('Admin-Code ist ungueltig.');
+    }
+}
+
 function clientHostname(): string
 {
     $candidates = [
@@ -81,6 +101,12 @@ try {
         return;
     }
 
+    if ($action === 'adminWorkplaces') {
+        requireAdminCode();
+        jsonResponse(['data' => $repository->adminWorkplaceMappings()]);
+        return;
+    }
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         jsonResponse(['error' => 'Methode nicht erlaubt.'], 405);
         return;
@@ -107,6 +133,18 @@ try {
 
     if ($action === 'finish') {
         jsonResponse(['data' => $repository->finish($pressId, $user)]);
+        return;
+    }
+
+    if ($action === 'saveWorkplace') {
+        requireAdminCode();
+        jsonResponse(['data' => $repository->saveWorkplaceMapping($payload)], 201);
+        return;
+    }
+
+    if ($action === 'deleteWorkplace') {
+        requireAdminCode();
+        jsonResponse(['data' => $repository->deleteWorkplaceMapping((int) ($payload['id'] ?? 0))]);
         return;
     }
 

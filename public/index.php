@@ -109,7 +109,10 @@
                         <h2>Pressenauftraege</h2>
                         <span>Benutzer und Arbeitsplatz auswaehlen</span>
                     </div>
-                    <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
+                    <div class="pressHeaderTools">
+                        <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
+                        <button type="button" id="pressAdminButton">Admin</button>
+                    </div>
                 </div>
                 <div class="pressLoginGrid">
                     <label>

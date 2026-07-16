@@ -597,6 +597,8 @@ const pressState = {
   orderQueries: {},
   selectedOrders: {},
   orderTimers: {},
+  adminCode: sessionStorage.getItem('scrapview.pressAdminCode') || '',
+  adminMappings: null,
   pollTimer: null,
   clockTimer: null
 };
@@ -605,6 +607,7 @@ const pressBoard = document.querySelector('#pressBoard');
 const pressUserSelect = document.querySelector('#pressUserSelect');
 const pressWorkplaceSelect = document.querySelector('#pressWorkplaceSelect');
 const pressLiveStatus = document.querySelector('#pressLiveStatus');
+const pressAdminButton = document.querySelector('#pressAdminButton');
 
 function setView(viewId) {
   document.querySelectorAll('.moduleView').forEach((view) => {
@@ -926,6 +929,207 @@ function openPressHistory(pressId) {
   backdrop.querySelector('[data-action="close-history"]')?.focus();
 }
 
+function pressAdminHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-Press-Admin-Code': pressState.adminCode
+  };
+}
+
+async function loadPressAdminMappings() {
+  const payload = await requestJson('/press-api.php?action=adminWorkplaces', {
+    headers: { 'X-Press-Admin-Code': pressState.adminCode }
+  });
+  pressState.adminMappings = payload.data || [];
+}
+
+async function savePressAdminMapping(payload) {
+  const response = await requestJson('/press-api.php?action=saveWorkplace', {
+    method: 'POST',
+    headers: pressAdminHeaders(),
+    body: JSON.stringify(payload)
+  });
+  pressState.adminMappings = response.data || [];
+}
+
+async function deletePressAdminMapping(id) {
+  const response = await requestJson('/press-api.php?action=deleteWorkplace', {
+    method: 'POST',
+    headers: pressAdminHeaders(),
+    body: JSON.stringify({ id })
+  });
+  pressState.adminMappings = response.data || [];
+}
+
+function renderPressAdminMappings() {
+  if (!pressState.adminMappings?.length) {
+    return '<p class="pressAdminEmpty">Noch keine Arbeitsplatz-Zuordnungen vorhanden.</p>';
+  }
+
+  return `
+    <div class="pressAdminTableWrap">
+      <table class="pressAdminTable">
+        <thead>
+          <tr><th>Hostname</th><th>Presse</th><th>Arbeitsplatz</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${pressState.adminMappings.map((mapping) => `
+            <tr>
+              <td><strong>${escapeHtml(mapping.hostname)}</strong></td>
+              <td>${escapeHtml(mapping.pressLabel || mapping.pressId)}</td>
+              <td>${escapeHtml(mapping.workplaceLabel || '-')}</td>
+              <td>${mapping.isActive ? 'Aktiv' : 'Inaktiv'}</td>
+              <td>
+                <div class="pressAdminActions">
+                  <button type="button" data-action="admin-edit" data-id="${escapeHtml(mapping.id)}">Bearbeiten</button>
+                  <button type="button" class="dangerButton" data-action="admin-delete" data-id="${escapeHtml(mapping.id)}">Entfernen</button>
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPressAdminDialog(error = '') {
+  document.querySelector('.pressAdminBackdrop')?.remove();
+
+  const isUnlocked = Array.isArray(pressState.adminMappings);
+  const pressOptions = pressState.context.presses
+    .map((press) => `<option value="${escapeHtml(press.id)}">${escapeHtml(press.label)}</option>`)
+    .join('');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pressAdminBackdrop';
+  backdrop.innerHTML = `
+    <section class="pressAdminDialog" role="dialog" aria-modal="true" aria-labelledby="pressAdminTitle">
+      <header>
+        <div>
+          <span>Admin</span>
+          <h3 id="pressAdminTitle">Arbeitsplaetze zu Pressen</h3>
+        </div>
+        <button type="button" class="closeHistoryButton" data-action="admin-close">Schliessen</button>
+      </header>
+      ${error ? `<p class="pressAdminError">${escapeHtml(error)}</p>` : ''}
+      <form class="pressAdminCodeForm" data-action="admin-unlock">
+        <label>
+          Admin-Code
+          <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" name="code" value="${escapeHtml(pressState.adminCode)}" placeholder="0000" required>
+        </label>
+        <button type="submit">${isUnlocked ? 'Neu laden' : 'Entsperren'}</button>
+      </form>
+      ${isUnlocked ? `
+        <form class="pressAdminForm" data-action="admin-save">
+          <input type="hidden" name="id" value="">
+          <label>
+            Hostname
+            <input type="text" name="hostname" placeholder="PRESS-PC-01" required>
+          </label>
+          <label>
+            Presse
+            <select name="pressId" required>${pressOptions}</select>
+          </label>
+          <label>
+            Arbeitsplatzname
+            <input type="text" name="workplaceLabel" placeholder="Arbeitsplatz Presse 1">
+          </label>
+          <label class="pressAdminCheck">
+            <input type="checkbox" name="isActive" checked>
+            Aktiv
+          </label>
+          <div class="pressAdminFormActions">
+            <button type="submit">Speichern</button>
+            <button type="button" class="secondaryButton" data-action="admin-reset">Neu</button>
+          </div>
+        </form>
+        ${renderPressAdminMappings()}
+      ` : ''}
+    </section>
+  `;
+
+  backdrop.addEventListener('click', async (event) => {
+    if (event.target === backdrop || event.target.closest('[data-action="admin-close"]')) {
+      backdrop.remove();
+      return;
+    }
+
+    const button = event.target.closest('button[data-action]');
+    if (!button) {
+      return;
+    }
+
+    const form = backdrop.querySelector('.pressAdminForm');
+    const action = button.dataset.action;
+
+    try {
+      if (action === 'admin-reset') {
+        form?.reset();
+        if (form?.elements.id) {
+          form.elements.id.value = '';
+        }
+      } else if (action === 'admin-edit') {
+        const mapping = pressState.adminMappings.find((item) => String(item.id) === String(button.dataset.id));
+        if (mapping && form) {
+          form.elements.id.value = mapping.id;
+          form.elements.hostname.value = mapping.hostname;
+          form.elements.pressId.value = mapping.pressId;
+          form.elements.workplaceLabel.value = mapping.workplaceLabel || '';
+          form.elements.isActive.checked = Boolean(mapping.isActive);
+          form.elements.hostname.focus();
+        }
+      } else if (action === 'admin-delete') {
+        button.disabled = true;
+        await deletePressAdminMapping(Number(button.dataset.id));
+        renderPressAdminDialog();
+        await loadPressContext();
+        await loadPressSnapshot({ quiet: true });
+      }
+    } catch (caught) {
+      renderPressAdminDialog(caught.message);
+    }
+  });
+
+  backdrop.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+
+    try {
+      if (form.dataset.action === 'admin-unlock') {
+        const code = String(form.elements.code.value || '').trim();
+        if (!/^\d{4}$/.test(code)) {
+          throw new Error('Bitte einen vierstelligen Code eingeben.');
+        }
+        pressState.adminCode = code;
+        sessionStorage.setItem('scrapview.pressAdminCode', code);
+        await loadPressAdminMappings();
+        renderPressAdminDialog();
+      } else if (form.dataset.action === 'admin-save') {
+        await savePressAdminMapping({
+          id: form.elements.id.value ? Number(form.elements.id.value) : 0,
+          hostname: form.elements.hostname.value,
+          pressId: form.elements.pressId.value,
+          workplaceLabel: form.elements.workplaceLabel.value,
+          isActive: form.elements.isActive.checked
+        });
+        renderPressAdminDialog();
+        await loadPressContext();
+        await loadPressSnapshot({ quiet: true });
+      }
+    } catch (caught) {
+      if (form.dataset.action === 'admin-unlock') {
+        sessionStorage.removeItem('scrapview.pressAdminCode');
+        pressState.adminCode = '';
+        pressState.adminMappings = null;
+      }
+      renderPressAdminDialog(caught.message);
+    }
+  });
+
+  document.body.appendChild(backdrop);
+  backdrop.querySelector(isUnlocked ? '.pressAdminForm input[name="hostname"]' : '.pressAdminCodeForm input')?.focus();
+}
+
 function updatePressTimers() {
   for (const runElement of document.querySelectorAll('[data-run-id]')) {
     const runId = Number(runElement.dataset.runId);
@@ -977,6 +1181,10 @@ function setupPressEvents() {
     localStorage.setItem('scrapview.pressPress', pressState.selectedPress);
     loadPressOrders(pressState.selectedPress, pressState.orderQueries[pressState.selectedPress] || '').catch(showPressError);
     renderPressBoard();
+  });
+
+  pressAdminButton?.addEventListener('click', () => {
+    renderPressAdminDialog();
   });
 
   pressBoard?.addEventListener('input', (event) => {
