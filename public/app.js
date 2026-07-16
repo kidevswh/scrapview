@@ -616,6 +616,12 @@ function setView(viewId) {
   });
 }
 
+function requestedView() {
+  const hashView = window.location.hash.replace('#', '');
+
+  return document.getElementById(hashView) ? hashView : 'analyticsView';
+}
+
 function pressStatusLabel(status) {
   return {
     active: 'Laeuft',
@@ -890,7 +896,10 @@ async function postPressAction(action, pressId, order = null) {
 
 function setupPressEvents() {
   document.querySelectorAll('.moduleTab').forEach((button) => {
-    button.addEventListener('click', () => setView(button.dataset.view));
+    button.addEventListener('click', () => {
+      setView(button.dataset.view);
+      window.location.hash = button.dataset.view;
+    });
   });
 
   pressUserSelect?.addEventListener('change', () => {
@@ -963,7 +972,8 @@ function showPressError(error) {
 
 async function bootPresses() {
   const pressTab = document.querySelector('.moduleTab[data-view="pressView"]');
-  if (!pressBoard || pressTab?.hidden) {
+  const directPressAccess = requestedView() === 'pressView';
+  if (!pressBoard || (pressTab?.hidden && !directPressAccess)) {
     return;
   }
 
@@ -1010,6 +1020,7 @@ chart.addEventListener('pointermove', (event) => {
   }
 });
 window.addEventListener('scroll', hideTooltip, true);
+setView(requestedView());
 
 boot().catch(showError);
 bootPresses().catch(showPressError);
