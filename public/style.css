@@ -458,6 +458,73 @@ input[type="range"] {
   gap: 12px;
 }
 
+.orderAutocomplete {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.orderAutocomplete button {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #f8fbfd;
+  color: var(--text);
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.orderAutocomplete button:hover,
+.orderAutocomplete button:focus {
+  border-color: var(--accent);
+  background: #edf7fb;
+}
+
+.orderAutocomplete strong,
+.orderAutocomplete span,
+.orderAutocomplete small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orderAutocomplete p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px;
+}
+
+.selectedOrder {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: #edf7fb;
+  padding: 10px;
+}
+
+.selectedOrder span,
+.selectedOrder small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.selectedOrder strong {
+  overflow-wrap: anywhere;
+}
+
 .activeRun span {
   display: block;
   color: var(--muted);

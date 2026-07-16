@@ -710,8 +710,8 @@ async function loadPressOrders(pressId, query = '') {
   const payload = await requestJson(`/press-api.php?action=orders&press=${encodeURIComponent(pressId)}&query=${encodeURIComponent(query)}`);
   pressState.orders[pressId] = payload.data || [];
 
-  if (!pressState.selectedOrders[pressId] && pressState.orders[pressId][0]) {
-    pressState.selectedOrders[pressId] = pressState.orders[pressId][0];
+  if (pressState.selectedOrders[pressId] && !pressState.orders[pressId].some((order) => order.id === pressState.selectedOrders[pressId].id)) {
+    pressState.selectedOrders[pressId] = null;
   }
 
   renderPressBoard();
@@ -740,7 +740,7 @@ function selectedOrderForPress(pressId) {
     return selected;
   }
 
-  return orders[0] || null;
+  return null;
 }
 
 function renderPressBoard() {
@@ -818,22 +818,43 @@ function renderOrderPicker(press, canOperate) {
   const orders = pressState.orders[press.id] || [];
   const selectedOrder = selectedOrderForPress(press.id);
   const query = pressState.orderQueries[press.id] || '';
+  const showResults = canOperate && query.trim() !== '';
 
   return `
     <section class="orderPicker">
       <label>
         Fertigungsauftrag suchen
-        <input type="search" data-action="order-query" data-press-id="${escapeHtml(press.id)}" value="${escapeHtml(query)}" placeholder="Auftragsnummer eingeben" ${canOperate ? '' : 'disabled'}>
+        <input type="search" data-action="order-query" data-press-id="${escapeHtml(press.id)}" value="${escapeHtml(query)}" placeholder="AUFNR oder MATNR eingeben" autocomplete="off" ${canOperate ? '' : 'disabled'}>
       </label>
-      <label>
-        Auftrag
-        <select data-action="order-select" data-press-id="${escapeHtml(press.id)}" ${canOperate ? '' : 'disabled'}>
-          ${orders.length ? orders.map((order) => `<option value="${escapeHtml(order.id)}" ${selectedOrder?.id === order.id ? 'selected' : ''}>${escapeHtml(order.label || order.id)}</option>`).join('') : '<option value="">Keine Auftraege geladen</option>'}
-        </select>
-      </label>
+      ${showResults ? renderOrderAutocomplete(press.id, orders) : ''}
+      ${selectedOrder ? `
+        <div class="selectedOrder">
+          <span>Ausgewaehlt</span>
+          <strong>${escapeHtml(selectedOrder.label || selectedOrder.id)}</strong>
+          <small>${escapeHtml(selectedOrder.description || selectedOrder.material || '-')}</small>
+        </div>
+      ` : '<p class="pressHint">Bitte einen Auftrag aus der Suche auswaehlen.</p>'}
       <button type="button" data-action="start" data-press-id="${escapeHtml(press.id)}" ${canOperate && selectedOrder ? '' : 'disabled'}>Auftrag starten</button>
       ${canOperate ? '' : '<p class="pressHint">Bitte Benutzer und diese Presse als Arbeitsplatz waehlen.</p>'}
     </section>
+  `;
+}
+
+function renderOrderAutocomplete(pressId, orders) {
+  if (orders.length === 0) {
+    return '<div class="orderAutocomplete"><p>Keine Treffer fuer AUFNR oder MATNR.</p></div>';
+  }
+
+  return `
+    <div class="orderAutocomplete">
+      ${orders.map((order) => `
+        <button type="button" data-action="order-pick" data-press-id="${escapeHtml(pressId)}" data-order-id="${escapeHtml(order.id)}">
+          <strong>${escapeHtml(order.id)}</strong>
+          <span>${escapeHtml(order.material || '-')}</span>
+          <small>${escapeHtml(order.description || '')}</small>
+        </button>
+      `).join('')}
+    </div>
   `;
 }
 
@@ -923,23 +944,11 @@ function setupPressEvents() {
 
     const pressId = target.dataset.pressId;
     pressState.orderQueries[pressId] = target.value;
+    pressState.selectedOrders[pressId] = null;
     window.clearTimeout(pressState.orderTimers[pressId]);
     pressState.orderTimers[pressId] = window.setTimeout(() => {
       loadPressOrders(pressId, pressState.orderQueries[pressId]).catch(showPressError);
     }, 300);
-  });
-
-  pressBoard?.addEventListener('change', (event) => {
-    const target = event.target;
-    if (!target.matches('[data-action="order-select"]')) {
-      return;
-    }
-
-    const pressId = target.dataset.pressId;
-    const order = (pressState.orders[pressId] || []).find((item) => item.id === target.value);
-    if (order) {
-      pressState.selectedOrders[pressId] = order;
-    }
   });
 
   pressBoard?.addEventListener('click', async (event) => {
@@ -952,6 +961,16 @@ function setupPressEvents() {
     const action = button.dataset.action;
 
     try {
+      if (action === 'order-pick') {
+        const order = (pressState.orders[pressId] || []).find((item) => item.id === button.dataset.orderId);
+        if (order) {
+          pressState.selectedOrders[pressId] = order;
+          pressState.orderQueries[pressId] = `${order.id} ${order.material || ''}`.trim();
+          renderPressBoard();
+        }
+        return;
+      }
+
       button.disabled = true;
       if (action === 'start') {
         await postPressAction('start', pressId, selectedOrderForPress(pressId));

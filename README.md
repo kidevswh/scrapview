@@ -53,7 +53,7 @@ Die Demo-Abfragen stehen in `config/charts.php`. Dort werden spaeter die echten 
 Die zweite Ansicht `Pressenauftraege` zeigt vier Pressen mit Fertigungsauftrag, Laufzeit, Pause/Fortsetzen, Beenden und Historie.
 Alle Arbeitsplaetze laden den Status alle zwei Sekunden neu und sehen dadurch Statusaenderungen nahezu in Echtzeit.
 
-Die Fertigungsauftraege werden im Echtbetrieb aus `sapdata.dbo.LOIPRO` gelesen. Die App speichert gestartete und beendete Laeufe in der lokalen Anwendungstabelle `dbo.press_job_runs`.
+Die Fertigungsauftraege werden im Echtbetrieb aus `sapdata.dbo.LOIPRO` gelesen. Die Autocomplete-Suche durchsucht `AUFNR` und `MATNR` in einem gemeinsamen Suchfeld. Die App speichert gestartete und beendete Laeufe in der lokalen Anwendungstabelle `dbo.press_job_runs`.
 
 Wichtige `.env`-Werte:
 

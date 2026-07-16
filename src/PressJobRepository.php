@@ -307,6 +307,10 @@ final class PressJobRepository
         }
 
         $materialColumn = $this->firstExistingColumn($columns, getenv('PRESS_MATERIAL_COLUMN') ?: '', self::MATERIAL_COLUMNS);
+        if ($materialColumn === null) {
+            throw new RuntimeException('In LOIPRO wurde keine Materialnummer-Spalte gefunden. Bitte PRESS_MATERIAL_COLUMN setzen.');
+        }
+
         $descriptionColumn = $this->firstExistingColumn($columns, getenv('PRESS_DESCRIPTION_COLUMN') ?: '', self::DESCRIPTION_COLUMNS);
         $quantityColumn = $this->firstExistingColumn($columns, getenv('PRESS_QUANTITY_COLUMN') ?: '', self::QUANTITY_COLUMNS);
         $unitColumn = $this->firstExistingColumn($columns, getenv('PRESS_UNIT_COLUMN') ?: '', self::UNIT_COLUMNS);
@@ -325,7 +329,10 @@ final class PressJobRepository
         $where = $this->quoteIdentifier($orderColumn) . ' is not null';
 
         if ($query !== '') {
-            $where .= ' and cast(' . $this->quoteIdentifier($orderColumn) . ' as nvarchar(120)) like :query';
+            $where .= ' and (
+                cast(' . $this->quoteIdentifier($orderColumn) . ' as nvarchar(120)) like :query
+                or cast(' . $this->quoteIdentifier($materialColumn) . ' as nvarchar(120)) like :query
+            )';
             $params['query'] = '%' . $query . '%';
         }
 
