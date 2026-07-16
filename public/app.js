@@ -783,25 +783,26 @@ function renderPressBoard() {
 
   for (const press of pressState.snapshot.presses || []) {
     const activeRun = press.activeRun;
-    const canOperate = selectedPress() === press.id && selectedUser() !== '';
+    const canUsePress = selectedPress() === press.id;
+    const canOperate = canUsePress && selectedUser() !== '';
     const card = document.createElement('article');
     card.className = 'pressCard';
     card.classList.toggle('isRunning', activeRun?.status === 'active');
     card.classList.toggle('isPaused', activeRun?.status === 'paused');
-    card.classList.toggle('isWorkplace', selectedPress() === press.id);
+    card.classList.toggle('isWorkplace', canUsePress);
 
     card.innerHTML = `
       <header class="pressCardHeader">
         <div>
           <h3>${escapeHtml(press.label)}</h3>
-          <span>${selectedPress() === press.id ? 'Dieser Arbeitsplatz' : 'Live-Status'}</span>
+          <span>${canUsePress ? 'Dieser Arbeitsplatz' : 'Live-Status'}</span>
         </div>
         <div class="pressCardTools">
           <strong class="pressStatus">${escapeHtml(pressStatusLabel(activeRun?.status))}</strong>
           <button type="button" class="historyButton" data-action="history" data-press-id="${escapeHtml(press.id)}">History</button>
         </div>
       </header>
-      ${activeRun ? renderActiveRun(press, activeRun, canOperate) : renderOrderPicker(press, canOperate)}
+      ${activeRun ? renderActiveRun(press, activeRun, canOperate) : renderOrderPicker(press, canUsePress, canOperate)}
     `;
 
     pressBoard.appendChild(card);
@@ -850,17 +851,20 @@ function renderActiveRun(press, run, canOperate) {
   `;
 }
 
-function renderOrderPicker(press, canOperate) {
+function renderOrderPicker(press, canUsePress, canOperate) {
   const orders = pressState.orders[press.id] || [];
   const selectedOrder = selectedOrderForPress(press.id);
   const query = pressState.orderQueries[press.id] || '';
-  const showResults = canOperate && query.trim() !== '';
+  const showResults = canUsePress && query.trim() !== '';
+  const hint = canUsePress
+    ? 'Bitte eine Schicht waehlen, um den Auftrag zu starten.'
+    : 'Bitte diese Presse als Arbeitsplatz waehlen.';
 
   return `
     <section class="orderPicker">
       <label>
         Fertigungsauftrag suchen
-        <input type="search" data-action="order-query" data-press-id="${escapeHtml(press.id)}" value="${escapeHtml(query)}" placeholder="AUFNR oder MATNR eingeben" autocomplete="off" ${canOperate ? '' : 'disabled'}>
+        <input type="search" data-action="order-query" data-press-id="${escapeHtml(press.id)}" value="${escapeHtml(query)}" placeholder="AUFNR oder MATNR eingeben" autocomplete="off" ${canUsePress ? '' : 'disabled'}>
       </label>
       ${showResults ? renderOrderAutocomplete(press.id, orders) : ''}
       ${selectedOrder ? `
@@ -871,7 +875,7 @@ function renderOrderPicker(press, canOperate) {
         </div>
       ` : '<p class="pressHint">Bitte einen Auftrag aus der Suche auswaehlen.</p>'}
       <button type="button" data-action="start" data-press-id="${escapeHtml(press.id)}" ${canOperate && selectedOrder ? '' : 'disabled'}>Auftrag starten</button>
-      ${canOperate ? '' : '<p class="pressHint">Bitte Schicht und diese Presse als Arbeitsplatz waehlen.</p>'}
+      ${canOperate ? '' : `<p class="pressHint">${hint}</p>`}
     </section>
   `;
 }
