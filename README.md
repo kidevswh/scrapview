@@ -47,3 +47,29 @@ DB_DSN="pgsql:host=localhost;port=5432;dbname=scrap"
 ## Erste Anpassung
 
 Die Demo-Abfragen stehen in `config/charts.php`. Dort werden spaeter die echten Tabellen und Kennzahlen eingetragen.
+
+## Pressenauftraege
+
+Die zweite Ansicht `Pressenauftraege` zeigt vier Pressen mit Fertigungsauftrag, Laufzeit, Pause/Fortsetzen, Beenden und Historie.
+Alle Arbeitsplaetze laden den Status alle zwei Sekunden neu und sehen dadurch Statusaenderungen nahezu in Echtzeit.
+
+Die Fertigungsauftraege werden im Echtbetrieb aus `sapdata.dbo.LOIPRO` gelesen. Die App speichert gestartete und beendete Laeufe in der lokalen Anwendungstabelle `dbo.press_job_runs`.
+
+Wichtige `.env`-Werte:
+
+```env
+PRESS_LOIPRO_TABLE="sapdata.dbo.LOIPRO"
+PRESS_USERS="Anlage 1,Anlage 2,Schichtfuehrer,Coda"
+```
+
+Falls die Spalten in `LOIPRO` anders heissen, koennen sie gesetzt werden:
+
+```env
+PRESS_ORDER_ID_COLUMN="AUFNR"
+PRESS_MATERIAL_COLUMN="MATNR"
+PRESS_DESCRIPTION_COLUMN="KTEXT"
+PRESS_QUANTITY_COLUMN="GAMNG"
+PRESS_UNIT_COLUMN="GMEIN"
+PRESS_PLANNED_START_COLUMN="GSTRP"
+PRESS_PLANNED_END_COLUMN="GLTRP"
+```

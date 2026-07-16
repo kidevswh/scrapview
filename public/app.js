@@ -50,8 +50,8 @@ const toInput = document.querySelector('#toInput');
 const chart = document.querySelector('#weightChart');
 const tooltip = document.querySelector('#chartTooltip');
 
-async function requestJson(url) {
-  const response = await fetch(url);
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, options);
   const payload = await response.json();
 
   if (!response.ok) {
@@ -59,6 +59,16 @@ async function requestJson(url) {
   }
 
   return payload;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[char]));
 }
 
 function labelTime(value) {
@@ -578,6 +588,395 @@ function showError(error) {
   document.querySelector('#dropTableBody').innerHTML = '<tr><td colspan="3">Fehler</td></tr>';
 }
 
+const pressState = {
+  context: { presses: [], users: [] },
+  snapshot: { presses: [], serverTime: null },
+  selectedUser: localStorage.getItem('scrapview.pressUser') || '',
+  selectedPress: localStorage.getItem('scrapview.pressPress') || '',
+  orders: {},
+  orderQueries: {},
+  selectedOrders: {},
+  orderTimers: {},
+  pollTimer: null,
+  clockTimer: null
+};
+
+const pressBoard = document.querySelector('#pressBoard');
+const pressUserSelect = document.querySelector('#pressUserSelect');
+const pressWorkplaceSelect = document.querySelector('#pressWorkplaceSelect');
+const pressLiveStatus = document.querySelector('#pressLiveStatus');
+
+function setView(viewId) {
+  document.querySelectorAll('.moduleView').forEach((view) => {
+    view.classList.toggle('isActive', view.id === viewId);
+  });
+
+  document.querySelectorAll('.moduleTab').forEach((button) => {
+    button.classList.toggle('isActive', button.dataset.view === viewId);
+  });
+}
+
+function pressStatusLabel(status) {
+  return {
+    active: 'Laeuft',
+    paused: 'Stoerung / Pause',
+    finished: 'Beendet'
+  }[status] || 'Bereit';
+}
+
+function durationLabel(milliseconds) {
+  const totalSeconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value) => String(value).padStart(2, '0');
+
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+function dateLabel(value) {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? String(value) : formatDate.format(date);
+}
+
+function runElapsedMs(run) {
+  if (!run?.startedAt) {
+    return 0;
+  }
+
+  const end = run.endedAt ? new Date(run.endedAt).getTime() : Date.now();
+  const start = new Date(run.startedAt).getTime();
+  const paused = Number(run.pausedMs || 0);
+
+  return Math.max(0, end - start - paused);
+}
+
+function selectedUser() {
+  return pressUserSelect?.value || pressState.selectedUser || '';
+}
+
+function selectedPress() {
+  return pressWorkplaceSelect?.value || pressState.selectedPress || '';
+}
+
+function fillPressContext() {
+  if (!pressUserSelect || !pressWorkplaceSelect) {
+    return;
+  }
+
+  pressUserSelect.innerHTML = '<option value="">Benutzer waehlen</option>' + pressState.context.users
+    .map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`)
+    .join('');
+  pressWorkplaceSelect.innerHTML = '<option value="">Presse waehlen</option>' + pressState.context.presses
+    .map((press) => `<option value="${escapeHtml(press.id)}">${escapeHtml(press.label)}</option>`)
+    .join('');
+
+  if (pressState.selectedUser && pressState.context.users.includes(pressState.selectedUser)) {
+    pressUserSelect.value = pressState.selectedUser;
+  }
+
+  if (pressState.selectedPress && pressState.context.presses.some((press) => press.id === pressState.selectedPress)) {
+    pressWorkplaceSelect.value = pressState.selectedPress;
+  }
+
+  if (!pressWorkplaceSelect.value && pressState.context.presses[0]) {
+    pressWorkplaceSelect.value = pressState.context.presses[0].id;
+    pressState.selectedPress = pressWorkplaceSelect.value;
+  }
+}
+
+async function loadPressContext() {
+  const payload = await requestJson('/press-api.php?action=context');
+  pressState.context = payload.data;
+  fillPressContext();
+}
+
+async function loadPressOrders(pressId, query = '') {
+  if (!pressId) {
+    return;
+  }
+
+  const payload = await requestJson(`/press-api.php?action=orders&press=${encodeURIComponent(pressId)}&query=${encodeURIComponent(query)}`);
+  pressState.orders[pressId] = payload.data || [];
+
+  if (!pressState.selectedOrders[pressId] && pressState.orders[pressId][0]) {
+    pressState.selectedOrders[pressId] = pressState.orders[pressId][0];
+  }
+
+  renderPressBoard();
+}
+
+async function loadPressSnapshot({ quiet = false } = {}) {
+  const payload = await requestJson('/press-api.php?action=snapshot');
+  pressState.snapshot = payload.data;
+
+  if (pressLiveStatus) {
+    pressLiveStatus.textContent = `Live aktualisiert: ${dateLabel(pressState.snapshot.serverTime)}`;
+  }
+
+  renderPressBoard();
+
+  if (!quiet) {
+    updatePressTimers();
+  }
+}
+
+function selectedOrderForPress(pressId) {
+  const selected = pressState.selectedOrders[pressId];
+  const orders = pressState.orders[pressId] || [];
+
+  if (selected && orders.some((order) => order.id === selected.id)) {
+    return selected;
+  }
+
+  return orders[0] || null;
+}
+
+function renderPressBoard() {
+  if (!pressBoard) {
+    return;
+  }
+
+  const activeElement = document.activeElement;
+  const activeAction = activeElement?.dataset?.action;
+  const activePressId = activeElement?.dataset?.pressId;
+  const activeSelection = typeof activeElement?.selectionStart === 'number' ? activeElement.selectionStart : null;
+  pressBoard.innerHTML = '';
+
+  for (const press of pressState.snapshot.presses || []) {
+    const activeRun = press.activeRun;
+    const canOperate = selectedPress() === press.id && selectedUser() !== '';
+    const card = document.createElement('article');
+    card.className = 'pressCard';
+    card.classList.toggle('isRunning', activeRun?.status === 'active');
+    card.classList.toggle('isPaused', activeRun?.status === 'paused');
+    card.classList.toggle('isWorkplace', selectedPress() === press.id);
+
+    card.innerHTML = `
+      <header class="pressCardHeader">
+        <div>
+          <h3>${escapeHtml(press.label)}</h3>
+          <span>${selectedPress() === press.id ? 'Dieser Arbeitsplatz' : 'Live-Status'}</span>
+        </div>
+        <strong class="pressStatus">${escapeHtml(pressStatusLabel(activeRun?.status))}</strong>
+      </header>
+      ${activeRun ? renderActiveRun(press, activeRun, canOperate) : renderOrderPicker(press, canOperate)}
+      ${renderPressHistory(press.history || [])}
+    `;
+
+    pressBoard.appendChild(card);
+  }
+
+  if (activeAction && activePressId) {
+    const restored = pressBoard.querySelector(`[data-action="${activeAction}"][data-press-id="${activePressId}"]`);
+    restored?.focus();
+    if (activeSelection !== null && typeof restored?.setSelectionRange === 'function') {
+      restored.setSelectionRange(activeSelection, activeSelection);
+    }
+  }
+}
+
+function renderActiveRun(press, run, canOperate) {
+  const disabled = canOperate ? '' : 'disabled';
+  const pauseButton = run.status === 'paused'
+    ? `<button type="button" data-action="resume" data-press-id="${escapeHtml(press.id)}" ${disabled}>Fortsetzen</button>`
+    : `<button type="button" class="warnButton" data-action="pause" data-press-id="${escapeHtml(press.id)}" ${disabled}>Pausieren</button>`;
+
+  return `
+    <section class="activeRun">
+      <div>
+        <span>Fertigungsauftrag</span>
+        <strong>${escapeHtml(run.orderLabel || run.orderId)}</strong>
+        <small>${escapeHtml(run.description || run.material || '-')}</small>
+      </div>
+      <div class="runTimer" data-run-id="${escapeHtml(run.id)}">${durationLabel(runElapsedMs(run))}</div>
+      <dl class="runFacts">
+        <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
+        <div><dt>Benutzer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+      </dl>
+      <div class="runActions">
+        ${pauseButton}
+        <button type="button" class="finishButton" data-action="finish" data-press-id="${escapeHtml(press.id)}" ${disabled}>Beenden</button>
+      </div>
+      ${canOperate ? '' : '<p class="pressHint">Bedienung nur am gewaehlten Arbeitsplatz moeglich.</p>'}
+    </section>
+  `;
+}
+
+function renderOrderPicker(press, canOperate) {
+  const orders = pressState.orders[press.id] || [];
+  const selectedOrder = selectedOrderForPress(press.id);
+  const query = pressState.orderQueries[press.id] || '';
+
+  return `
+    <section class="orderPicker">
+      <label>
+        Fertigungsauftrag suchen
+        <input type="search" data-action="order-query" data-press-id="${escapeHtml(press.id)}" value="${escapeHtml(query)}" placeholder="Auftragsnummer eingeben" ${canOperate ? '' : 'disabled'}>
+      </label>
+      <label>
+        Auftrag
+        <select data-action="order-select" data-press-id="${escapeHtml(press.id)}" ${canOperate ? '' : 'disabled'}>
+          ${orders.length ? orders.map((order) => `<option value="${escapeHtml(order.id)}" ${selectedOrder?.id === order.id ? 'selected' : ''}>${escapeHtml(order.label || order.id)}</option>`).join('') : '<option value="">Keine Auftraege geladen</option>'}
+        </select>
+      </label>
+      <button type="button" data-action="start" data-press-id="${escapeHtml(press.id)}" ${canOperate && selectedOrder ? '' : 'disabled'}>Auftrag starten</button>
+      ${canOperate ? '' : '<p class="pressHint">Bitte Benutzer und diese Presse als Arbeitsplatz waehlen.</p>'}
+    </section>
+  `;
+}
+
+function renderPressHistory(history) {
+  return `
+    <section class="pressHistory">
+      <h4>Historie</h4>
+      ${history.length ? `
+        <table>
+          <thead>
+            <tr><th>Auftrag</th><th>Start</th><th>Ende</th><th>Dauer</th></tr>
+          </thead>
+          <tbody>
+            ${history.map((run) => `
+              <tr>
+                <td><strong>${escapeHtml(run.orderId)}</strong><small>${escapeHtml(run.material || '')}</small></td>
+                <td>${escapeHtml(dateLabel(run.startedAt))}</td>
+                <td>${escapeHtml(dateLabel(run.endedAt))}</td>
+                <td>${escapeHtml(durationLabel(run.elapsedMs))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : '<p>Noch keine abgeschlossenen Auftraege.</p>'}
+    </section>
+  `;
+}
+
+function updatePressTimers() {
+  for (const runElement of document.querySelectorAll('[data-run-id]')) {
+    const runId = Number(runElement.dataset.runId);
+    const run = (pressState.snapshot.presses || [])
+      .map((press) => press.activeRun)
+      .find((item) => Number(item?.id) === runId);
+
+    if (run) {
+      runElement.textContent = durationLabel(runElapsedMs(run));
+    }
+  }
+}
+
+async function postPressAction(action, pressId, order = null) {
+  const payload = {
+    pressId,
+    user: selectedUser()
+  };
+
+  if (order) {
+    payload.order = order;
+  }
+
+  const response = await requestJson(`/press-api.php?action=${encodeURIComponent(action)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  pressState.snapshot = response.data;
+  renderPressBoard();
+}
+
+function setupPressEvents() {
+  document.querySelectorAll('.moduleTab').forEach((button) => {
+    button.addEventListener('click', () => setView(button.dataset.view));
+  });
+
+  pressUserSelect?.addEventListener('change', () => {
+    pressState.selectedUser = pressUserSelect.value;
+    localStorage.setItem('scrapview.pressUser', pressState.selectedUser);
+    renderPressBoard();
+  });
+
+  pressWorkplaceSelect?.addEventListener('change', () => {
+    pressState.selectedPress = pressWorkplaceSelect.value;
+    localStorage.setItem('scrapview.pressPress', pressState.selectedPress);
+    loadPressOrders(pressState.selectedPress, pressState.orderQueries[pressState.selectedPress] || '').catch(showPressError);
+    renderPressBoard();
+  });
+
+  pressBoard?.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!target.matches('[data-action="order-query"]')) {
+      return;
+    }
+
+    const pressId = target.dataset.pressId;
+    pressState.orderQueries[pressId] = target.value;
+    window.clearTimeout(pressState.orderTimers[pressId]);
+    pressState.orderTimers[pressId] = window.setTimeout(() => {
+      loadPressOrders(pressId, pressState.orderQueries[pressId]).catch(showPressError);
+    }, 300);
+  });
+
+  pressBoard?.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!target.matches('[data-action="order-select"]')) {
+      return;
+    }
+
+    const pressId = target.dataset.pressId;
+    const order = (pressState.orders[pressId] || []).find((item) => item.id === target.value);
+    if (order) {
+      pressState.selectedOrders[pressId] = order;
+    }
+  });
+
+  pressBoard?.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) {
+      return;
+    }
+
+    const pressId = button.dataset.pressId;
+    const action = button.dataset.action;
+
+    try {
+      button.disabled = true;
+      if (action === 'start') {
+        await postPressAction('start', pressId, selectedOrderForPress(pressId));
+      } else {
+        await postPressAction(action, pressId);
+      }
+    } catch (error) {
+      showPressError(error);
+    }
+  });
+}
+
+function showPressError(error) {
+  if (pressLiveStatus) {
+    pressLiveStatus.textContent = error.message;
+  }
+}
+
+async function bootPresses() {
+  if (!pressBoard) {
+    return;
+  }
+
+  setupPressEvents();
+  await loadPressContext();
+  await loadPressSnapshot();
+  await loadPressOrders(selectedPress(), pressState.orderQueries[selectedPress()] || '');
+
+  pressState.clockTimer = window.setInterval(updatePressTimers, 1000);
+  pressState.pollTimer = window.setInterval(() => {
+    loadPressSnapshot({ quiet: true }).catch(showPressError);
+  }, 2000);
+}
+
 async function boot() {
   state.meta = await requestJson('/weights.php?action=meta');
   state.loadedStart = Math.max(Number(state.meta.min), Number(state.meta.max) - defaultWindowMs);
@@ -612,3 +1011,4 @@ chart.addEventListener('pointermove', (event) => {
 window.addEventListener('scroll', hideTooltip, true);
 
 boot().catch(showError);
+bootPresses().catch(showPressError);

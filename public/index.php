@@ -15,6 +15,12 @@
             <img class="brandLogo" src="/images/LogoSWH.png" alt="Sungwoo Hitech">
         </header>
 
+        <nav class="moduleNav" aria-label="Ansichten">
+            <button class="moduleTab isActive" type="button" data-view="analyticsView">Ausschussanalyse</button>
+            <button class="moduleTab" type="button" data-view="pressView">Pressenauftraege</button>
+        </nav>
+
+        <section id="analyticsView" class="moduleView isActive">
         <section class="metrics" aria-label="Kennzahlen">
             <article>
                 <span>Zeitraum von</span>
@@ -93,6 +99,31 @@
                     </div>
                 </aside>
             </div>
+        </section>
+        </section>
+
+        <section id="pressView" class="moduleView">
+            <section class="panel pressLoginPanel">
+                <div class="panelHeader">
+                    <div>
+                        <h2>Pressenauftraege</h2>
+                        <span>Benutzer und Arbeitsplatz auswaehlen</span>
+                    </div>
+                    <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
+                </div>
+                <div class="pressLoginGrid">
+                    <label>
+                        Benutzer
+                        <select id="pressUserSelect"></select>
+                    </label>
+                    <label>
+                        Arbeitsplatz / Presse
+                        <select id="pressWorkplaceSelect"></select>
+                    </label>
+                </div>
+            </section>
+
+            <section class="pressBoard" id="pressBoard" aria-label="Pressen"></section>
         </section>
     </main>
 

@@ -80,6 +80,34 @@ button:hover {
   background: var(--accent-2);
 }
 
+.moduleNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.moduleTab {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.moduleTab:hover,
+.moduleTab.isActive {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.moduleView {
+  display: none;
+}
+
+.moduleView.isActive {
+  display: block;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -336,6 +364,211 @@ input[type="range"] {
   text-align: right;
 }
 
+.pressLoginPanel label,
+.orderPicker label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pressLoginGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.pressLoginGrid select,
+.orderPicker select,
+.orderPicker input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 10px 11px;
+}
+
+.pressBoard {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pressCard {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.pressCard.isWorkplace {
+  border-color: var(--accent);
+}
+
+.pressCard.isRunning {
+  border-left-color: #16a34a;
+}
+
+.pressCard.isPaused {
+  border-left-color: var(--warn);
+}
+
+.pressCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pressCardHeader h3 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.pressCardHeader span,
+.pressHint,
+.activeRun small,
+.pressHistory p,
+.pressHistory small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pressStatus {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #edf7fb;
+  color: var(--accent-2);
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.activeRun,
+.orderPicker {
+  display: grid;
+  gap: 12px;
+}
+
+.activeRun span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.activeRun strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+
+.runTimer {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfd;
+  color: var(--text);
+  font-size: clamp(30px, 5vw, 52px);
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 12px;
+  text-align: center;
+}
+
+.runFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.runFacts div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.runFacts dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.runFacts dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.runActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.warnButton {
+  background: #f59e0b;
+}
+
+.warnButton:hover {
+  background: #d97706;
+}
+
+.finishButton {
+  background: var(--warn);
+}
+
+.finishButton:hover {
+  background: #b9151b;
+}
+
+.pressHistory {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.pressHistory h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.pressHistory table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pressHistory th,
+.pressHistory td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.pressHistory th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.pressHistory td strong,
+.pressHistory td small {
+  display: block;
+}
+
 .chartWrap {
   position: relative;
   min-width: 0;
@@ -500,6 +733,8 @@ input[type="range"] {
     grid-template-columns: 1fr;
   }
 
+  .pressLoginGrid,
+  .pressBoard,
   .chartLayout {
     grid-template-columns: 1fr;
   }
