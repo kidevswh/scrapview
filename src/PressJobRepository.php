@@ -583,11 +583,12 @@ final class PressJobRepository
     private function workplaceContext(): array
     {
         $assignments = $this->workplaceAssignmentsForClient();
+        $mappingAvailable = $this->canUseWorkplaceMappings();
 
         return [
             'hostname' => $this->clientHostname,
-            'mappingAvailable' => $this->canUseWorkplaceMappings(),
-            'restricted' => $assignments !== [],
+            'mappingAvailable' => $mappingAvailable,
+            'restricted' => $mappingAvailable,
             'allowedPressIds' => array_values(array_unique(array_column($assignments, 'pressId'))),
             'assignments' => $assignments,
         ];
@@ -595,10 +596,14 @@ final class PressJobRepository
 
     private function assertWorkplaceAccess(string $pressId): void
     {
+        if (! $this->canUseWorkplaceMappings()) {
+            return;
+        }
+
         $allowedPressIds = array_column($this->workplaceAssignmentsForClient(), 'pressId');
 
         if ($allowedPressIds === []) {
-            return;
+            throw new RuntimeException('Dieser Arbeitsplatz ist keiner Presse zugeordnet.');
         }
 
         if (! in_array($pressId, $allowedPressIds, true)) {

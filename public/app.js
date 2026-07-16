@@ -670,7 +670,7 @@ function selectedUser() {
 }
 
 function selectedPress() {
-  return pressWorkplaceSelect?.value || pressState.selectedPress || '';
+  return pressWorkplaceSelect ? pressWorkplaceSelect.value : pressState.selectedPress || '';
 }
 
 function fillPressContext() {
@@ -678,15 +678,17 @@ function fillPressContext() {
     return;
   }
 
-  const allowedPressIds = new Set(pressState.context.workplace?.allowedPressIds || []);
-  const availablePresses = allowedPressIds.size
+  const workplace = pressState.context.workplace || {};
+  const mappingAvailable = Boolean(workplace.mappingAvailable);
+  const allowedPressIds = new Set(workplace.allowedPressIds || []);
+  const availablePresses = mappingAvailable
     ? pressState.context.presses.filter((press) => allowedPressIds.has(press.id))
     : pressState.context.presses;
 
   pressUserSelect.innerHTML = '<option value="">Benutzer waehlen</option>' + pressState.context.users
     .map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`)
     .join('');
-  pressWorkplaceSelect.innerHTML = '<option value="">Presse waehlen</option>' + pressState.context.presses
+  pressWorkplaceSelect.innerHTML = '<option value="">' + (mappingAvailable && availablePresses.length === 0 ? 'Keine Presse fuer diesen PC zugeordnet' : 'Presse waehlen') + '</option>' + pressState.context.presses
     .filter((press) => availablePresses.some((available) => available.id === press.id))
     .map((press) => `<option value="${escapeHtml(press.id)}">${escapeHtml(press.label)}</option>`)
     .join('');
@@ -704,7 +706,12 @@ function fillPressContext() {
     pressState.selectedPress = pressWorkplaceSelect.value;
   }
 
-  pressWorkplaceSelect.disabled = allowedPressIds.size === 1;
+  if (!pressWorkplaceSelect.value) {
+    pressState.selectedPress = '';
+    localStorage.removeItem('scrapview.pressPress');
+  }
+
+  pressWorkplaceSelect.disabled = mappingAvailable && availablePresses.length <= 1;
 }
 
 async function loadPressContext() {
