@@ -595,6 +595,7 @@ const pressState = {
   selectedPress: localStorage.getItem('scrapview.pressPress') || '',
   orders: {},
   orderQueries: {},
+  orderResultsOpen: {},
   selectedOrders: {},
   orderTimers: {},
   adminCode: sessionStorage.getItem('scrapview.pressAdminCode') || '',
@@ -855,7 +856,7 @@ function renderOrderPicker(press, canUsePress, canOperate) {
   const orders = pressState.orders[press.id] || [];
   const selectedOrder = selectedOrderForPress(press.id);
   const query = pressState.orderQueries[press.id] || '';
-  const showResults = canUsePress && query.trim() !== '';
+  const showResults = canUsePress && pressState.orderResultsOpen[press.id] !== false && query.trim() !== '';
   const hint = canUsePress
     ? 'Bitte eine Schicht waehlen, um den Auftrag zu starten.'
     : 'Bitte diese Presse als Arbeitsplatz waehlen.';
@@ -1222,6 +1223,7 @@ function setupPressEvents() {
 
     const pressId = target.dataset.pressId;
     pressState.orderQueries[pressId] = target.value;
+    pressState.orderResultsOpen[pressId] = true;
     pressState.selectedOrders[pressId] = null;
     window.clearTimeout(pressState.orderTimers[pressId]);
     pressState.orderTimers[pressId] = window.setTimeout(() => {
@@ -1244,6 +1246,7 @@ function setupPressEvents() {
         if (order) {
           pressState.selectedOrders[pressId] = order;
           pressState.orderQueries[pressId] = `${order.id} ${order.material || ''}`.trim();
+          pressState.orderResultsOpen[pressId] = false;
           renderPressBoard();
         }
         return;
