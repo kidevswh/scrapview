@@ -775,6 +775,10 @@ function renderPressBoard() {
   const activeAction = activeElement?.dataset?.action;
   const activePressId = activeElement?.dataset?.pressId;
   const activeSelection = typeof activeElement?.selectionStart === 'number' ? activeElement.selectionStart : null;
+  const autocompleteScroll = new Map(
+    Array.from(pressBoard.querySelectorAll('.orderAutocomplete[data-press-id]'))
+      .map((element) => [element.dataset.pressId, element.scrollTop])
+  );
   pressBoard.innerHTML = '';
 
   for (const press of pressState.snapshot.presses || []) {
@@ -808,6 +812,13 @@ function renderPressBoard() {
     restored?.focus();
     if (activeSelection !== null && typeof restored?.setSelectionRange === 'function') {
       restored.setSelectionRange(activeSelection, activeSelection);
+    }
+  }
+
+  for (const [pressId, scrollTop] of autocompleteScroll) {
+    const restoredList = pressBoard.querySelector(`.orderAutocomplete[data-press-id="${pressId}"]`);
+    if (restoredList) {
+      restoredList.scrollTop = scrollTop;
     }
   }
 }
@@ -867,11 +878,11 @@ function renderOrderPicker(press, canOperate) {
 
 function renderOrderAutocomplete(pressId, orders) {
   if (orders.length === 0) {
-    return '<div class="orderAutocomplete"><p>Keine Treffer fuer AUFNR oder MATNR.</p></div>';
+    return `<div class="orderAutocomplete" data-press-id="${escapeHtml(pressId)}"><p>Keine Treffer fuer AUFNR oder MATNR.</p></div>`;
   }
 
   return `
-    <div class="orderAutocomplete">
+    <div class="orderAutocomplete" data-press-id="${escapeHtml(pressId)}">
       ${orders.map((order) => `
         <button type="button" data-action="order-pick" data-press-id="${escapeHtml(pressId)}" data-order-id="${escapeHtml(order.id)}">
           <strong>${escapeHtml(order.id)}</strong>
