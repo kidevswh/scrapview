@@ -24,15 +24,13 @@ final class PressJobRepository
     private const START_COLUMNS = ['GSTRP', 'START_DATE', 'PLANNED_START', 'STARTDATUM'];
     private const END_COLUMNS = ['GLTRP', 'END_DATE', 'PLANNED_END', 'ENDDATUM'];
 
+    private ?bool $databaseStateAvailable = null;
+
     public function __construct(
         private readonly ?PDO $pdo,
         private readonly bool $demoMode = false,
         private readonly string $loiproTable = 'sapdata.dbo.LOIPRO'
-    ) {
-        if (! $this->demoMode) {
-            $this->ensureSchema();
-        }
-    }
+    ) {}
 
     public function context(): array
     {
@@ -55,7 +53,7 @@ final class PressJobRepository
 
     public function snapshot(): array
     {
-        $runs = $this->demoMode || ! $this->pdo
+        $runs = $this->usesFileState()
             ? $this->demoRuns()
             : $this->databaseRuns();
 
@@ -107,7 +105,7 @@ final class PressJobRepository
             throw new RuntimeException('Auf dieser Presse laeuft bereits ein Auftrag.');
         }
 
-        if ($this->demoMode || ! $this->pdo) {
+        if ($this->usesFileState()) {
             $runs = $this->demoRuns();
             $runs[] = [
                 'id' => $this->nextDemoId($runs),
@@ -179,7 +177,7 @@ final class PressJobRepository
         $this->assertPress($pressId);
         $user = $this->normalizeUser($user);
 
-        if ($this->demoMode || ! $this->pdo) {
+        if ($this->usesFileState()) {
             $runs = $this->demoRuns();
             $now = $this->nowIso();
 
@@ -264,7 +262,7 @@ final class PressJobRepository
 
     private function activeRun(string $pressId): ?array
     {
-        if ($this->demoMode || ! $this->pdo) {
+        if ($this->usesFileState()) {
             foreach ($this->demoRuns() as $run) {
                 if ($run['press_id'] === $pressId && in_array($run['status'], ['active', 'paused'], true)) {
                     return $run;
@@ -330,10 +328,11 @@ final class PressJobRepository
 
         if ($query !== '') {
             $where .= ' and (
-                cast(' . $this->quoteIdentifier($orderColumn) . ' as nvarchar(120)) like :query
-                or cast(' . $this->quoteIdentifier($materialColumn) . ' as nvarchar(120)) like :query
+                cast(' . $this->quoteIdentifier($orderColumn) . ' as nvarchar(120)) like :query_order
+                or cast(' . $this->quoteIdentifier($materialColumn) . ' as nvarchar(120)) like :query_material
             )';
-            $params['query'] = '%' . $query . '%';
+            $params['query_order'] = '%' . $query . '%';
+            $params['query_material'] = '%' . $query . '%';
         }
 
         $statement = $this->pdo->prepare(
@@ -461,6 +460,31 @@ final class PressJobRepository
         $configured = array_values(array_filter(array_map('trim', explode(',', (string) (getenv('PRESS_USERS') ?: '')))));
 
         return $configured !== [] ? $configured : self::DEMO_USERS;
+    }
+
+    private function usesFileState(): bool
+    {
+        return $this->demoMode || ! $this->pdo || ! $this->canUseDatabaseState();
+    }
+
+    private function canUseDatabaseState(): bool
+    {
+        if ($this->demoMode || ! $this->pdo) {
+            return false;
+        }
+
+        if ($this->databaseStateAvailable !== null) {
+            return $this->databaseStateAvailable;
+        }
+
+        try {
+            $this->ensureSchema();
+            $this->databaseStateAvailable = true;
+        } catch (Throwable) {
+            $this->databaseStateAvailable = false;
+        }
+
+        return $this->databaseStateAvailable;
     }
 
     private function assertPress(string $pressId): void
