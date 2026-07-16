@@ -10,10 +10,9 @@ final class PressJobRepository
     ];
 
     private const DEMO_USERS = [
-        'Anlage 1',
-        'Anlage 2',
-        'Schichtfuehrer',
-        'Coda',
+        'Frühschicht',
+        'Spätschicht',
+        'Nachtschicht',
     ];
 
     private const ORDER_COLUMNS = ['AUFNR', 'ORDER_ID', 'ORDERID', 'FERTIGUNGSAUFTRAG'];
@@ -714,7 +713,7 @@ final class PressJobRepository
         $user = trim($user);
 
         if ($user === '') {
-            throw new InvalidArgumentException('Bitte einen Benutzer auswaehlen.');
+            throw new InvalidArgumentException('Bitte eine Schicht auswaehlen.');
         }
 
         return $user;

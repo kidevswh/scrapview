@@ -666,7 +666,7 @@ function runElapsedMs(run) {
 }
 
 function selectedUser() {
-  return pressUserSelect?.value || pressState.selectedUser || '';
+  return pressUserSelect ? pressUserSelect.value : pressState.selectedUser || '';
 }
 
 function selectedPress() {
@@ -685,7 +685,7 @@ function fillPressContext() {
     ? pressState.context.presses.filter((press) => allowedPressIds.has(press.id))
     : pressState.context.presses;
 
-  pressUserSelect.innerHTML = '<option value="">Benutzer waehlen</option>' + pressState.context.users
+  pressUserSelect.innerHTML = '<option value="">Schicht waehlen</option>' + pressState.context.users
     .map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`)
     .join('');
   pressWorkplaceSelect.innerHTML = '<option value="">' + (mappingAvailable && availablePresses.length === 0 ? 'Keine Presse fuer diesen PC zugeordnet' : 'Presse waehlen') + '</option>' + pressState.context.presses
@@ -695,6 +695,11 @@ function fillPressContext() {
 
   if (pressState.selectedUser && pressState.context.users.includes(pressState.selectedUser)) {
     pressUserSelect.value = pressState.selectedUser;
+  }
+
+  if (!pressUserSelect.value) {
+    pressState.selectedUser = '';
+    localStorage.removeItem('scrapview.pressUser');
   }
 
   if (pressState.selectedPress && availablePresses.some((press) => press.id === pressState.selectedPress)) {
@@ -823,7 +828,7 @@ function renderActiveRun(press, run, canOperate) {
       <div class="runTimer" data-run-id="${escapeHtml(run.id)}">${durationLabel(runElapsedMs(run))}</div>
       <dl class="runFacts">
         <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
-        <div><dt>Benutzer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+        <div><dt>Schicht</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
       </dl>
       <div class="runActions">
         ${pauseButton}
@@ -855,7 +860,7 @@ function renderOrderPicker(press, canOperate) {
         </div>
       ` : '<p class="pressHint">Bitte einen Auftrag aus der Suche auswaehlen.</p>'}
       <button type="button" data-action="start" data-press-id="${escapeHtml(press.id)}" ${canOperate && selectedOrder ? '' : 'disabled'}>Auftrag starten</button>
-      ${canOperate ? '' : '<p class="pressHint">Bitte Benutzer und diese Presse als Arbeitsplatz waehlen.</p>'}
+      ${canOperate ? '' : '<p class="pressHint">Bitte Schicht und diese Presse als Arbeitsplatz waehlen.</p>'}
     </section>
   `;
 }
@@ -895,7 +900,7 @@ function renderPressHistoryRows(history) {
             <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
             <div><dt>Ende</dt><dd>${escapeHtml(dateLabel(run.endedAt))}</dd></div>
             <div><dt>Dauer</dt><dd>${escapeHtml(durationLabel(run.elapsedMs))}</dd></div>
-            <div><dt>Benutzer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+            <div><dt>Schicht</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
           </dl>
         </article>
       `).join('')}

@@ -107,7 +107,7 @@
                 <div class="panelHeader">
                     <div>
                         <h2>Pressenauftraege</h2>
-                        <span>Benutzer und Arbeitsplatz auswaehlen</span>
+                        <span>Schicht und Arbeitsplatz auswaehlen</span>
                     </div>
                     <div class="pressHeaderTools">
                         <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
@@ -116,7 +116,7 @@
                 </div>
                 <div class="pressLoginGrid">
                     <label>
-                        Benutzer
+                        Schicht
                         <select id="pressUserSelect"></select>
                     </label>
                     <label>
