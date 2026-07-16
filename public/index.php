@@ -17,7 +17,7 @@
 
         <nav class="moduleNav" aria-label="Ansichten">
             <button class="moduleTab isActive" type="button" data-view="analyticsView">Ausschussanalyse</button>
-            <button class="moduleTab" type="button" data-view="pressView">Pressenauftraege</button>
+            <button class="moduleTab" type="button" data-view="pressView" hidden>Pressenauftraege</button>
         </nav>
 
         <section id="analyticsView" class="moduleView isActive">

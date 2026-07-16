@@ -962,7 +962,8 @@ function showPressError(error) {
 }
 
 async function bootPresses() {
-  if (!pressBoard) {
+  const pressTab = document.querySelector('.moduleTab[data-view="pressView"]');
+  if (!pressBoard || pressTab?.hidden) {
     return;
   }
 
