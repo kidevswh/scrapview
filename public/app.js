@@ -61,6 +61,35 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
+function workstationCode() {
+  return (new URLSearchParams(window.location.search).get('station') || '').trim();
+}
+
+function isWorkstationMode() {
+  return workstationCode() !== '';
+}
+
+function pressApiUrl(action, params = {}) {
+  const query = new URLSearchParams({ action, ...params });
+  const workstation = workstationCode();
+
+  if (workstation !== '') {
+    query.set('station', workstation);
+  }
+
+  return `/press-api.php?${query.toString()}`;
+}
+
+function dateTimeLocalToIso(value) {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
@@ -600,15 +629,25 @@ const pressState = {
   orderTimers: {},
   adminCode: sessionStorage.getItem('scrapview.pressAdminCode') || '',
   adminMappings: null,
+  summary: null,
+  summaryOpen: false,
+  historyFilters: {
+    press: '',
+    shift: '',
+    startFrom: '',
+    startTo: ''
+  },
   pollTimer: null,
   clockTimer: null
 };
 
 const pressBoard = document.querySelector('#pressBoard');
+const pressSummary = document.querySelector('#pressSummary');
 const pressUserSelect = document.querySelector('#pressUserSelect');
 const pressWorkplaceSelect = document.querySelector('#pressWorkplaceSelect');
 const pressLiveStatus = document.querySelector('#pressLiveStatus');
 const pressAdminButton = document.querySelector('#pressAdminButton');
+const pressHeaderHost = document.querySelector('#pressHeaderHost');
 
 function setView(viewId) {
   document.querySelectorAll('.moduleView').forEach((view) => {
@@ -674,8 +713,35 @@ function selectedPress() {
   return pressWorkplaceSelect ? pressWorkplaceSelect.value : pressState.selectedPress || '';
 }
 
+function operatorsForPress(pressId) {
+  const workplace = pressState.context.workplace || {};
+  const assignments = workplace.assignments || [];
+  const operators = assignments
+    .filter((assignment) => assignment.pressId === pressId)
+    .map((assignment) => String(assignment.pressOperator || '').trim())
+    .filter(Boolean);
+
+  if (operators.length > 0) {
+    return Array.from(new Set(operators));
+  }
+
+  return workplace.mappingAvailable ? [] : (pressState.context.users || []);
+}
+
 function fillPressContext() {
   if (!pressUserSelect || !pressWorkplaceSelect) {
+    return;
+  }
+
+  if (!isWorkstationMode()) {
+    pressWorkplaceSelect.innerHTML = '<option value="">Allgemeine Ansicht</option>';
+    pressWorkplaceSelect.disabled = true;
+    pressUserSelect.innerHTML = '<option value="">Nur Ansicht</option>';
+    pressUserSelect.disabled = true;
+    pressState.selectedPress = '';
+    pressState.selectedUser = '';
+    localStorage.removeItem('scrapview.pressPress');
+    localStorage.removeItem('scrapview.pressUser');
     return;
   }
 
@@ -686,22 +752,10 @@ function fillPressContext() {
     ? pressState.context.presses.filter((press) => allowedPressIds.has(press.id))
     : pressState.context.presses;
 
-  pressUserSelect.innerHTML = '<option value="">Schicht waehlen</option>' + pressState.context.users
-    .map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`)
-    .join('');
   pressWorkplaceSelect.innerHTML = '<option value="">' + (mappingAvailable && availablePresses.length === 0 ? 'Keine Presse fuer diesen PC zugeordnet' : 'Presse waehlen') + '</option>' + pressState.context.presses
     .filter((press) => availablePresses.some((available) => available.id === press.id))
     .map((press) => `<option value="${escapeHtml(press.id)}">${escapeHtml(press.label)}</option>`)
     .join('');
-
-  if (pressState.selectedUser && pressState.context.users.includes(pressState.selectedUser)) {
-    pressUserSelect.value = pressState.selectedUser;
-  }
-
-  if (!pressUserSelect.value) {
-    pressState.selectedUser = '';
-    localStorage.removeItem('scrapview.pressUser');
-  }
 
   if (pressState.selectedPress && availablePresses.some((press) => press.id === pressState.selectedPress)) {
     pressWorkplaceSelect.value = pressState.selectedPress;
@@ -718,11 +772,35 @@ function fillPressContext() {
   }
 
   pressWorkplaceSelect.disabled = mappingAvailable && availablePresses.length <= 1;
+
+  const operators = operatorsForPress(pressWorkplaceSelect.value);
+  pressUserSelect.innerHTML = '<option value="">' + (operators.length === 0 ? 'Kein Pressenfuehrer hinterlegt' : 'Pressenfuehrer waehlen') + '</option>' + operators
+    .map((operator) => `<option value="${escapeHtml(operator)}">${escapeHtml(operator)}</option>`)
+    .join('');
+  pressUserSelect.disabled = operators.length === 0;
+
+  if (pressState.selectedUser && operators.includes(pressState.selectedUser)) {
+    pressUserSelect.value = pressState.selectedUser;
+  }
+
+  if (!pressUserSelect.value && operators.length === 1) {
+    pressUserSelect.value = operators[0];
+    pressState.selectedUser = operators[0];
+    localStorage.setItem('scrapview.pressUser', pressState.selectedUser);
+  }
+
+  if (!pressUserSelect.value) {
+    pressState.selectedUser = '';
+    localStorage.removeItem('scrapview.pressUser');
+  }
 }
 
 async function loadPressContext() {
-  const payload = await requestJson('/press-api.php?action=context');
+  const payload = await requestJson(pressApiUrl('context'));
   pressState.context = payload.data;
+  if (pressHeaderHost) {
+    pressHeaderHost.textContent = workstationCode() ? 'Arbeitsplatz-Launcher aktiv' : 'Allgemeine Ansicht';
+  }
   fillPressContext();
 }
 
@@ -731,7 +809,7 @@ async function loadPressOrders(pressId, query = '') {
     return;
   }
 
-  const payload = await requestJson(`/press-api.php?action=orders&press=${encodeURIComponent(pressId)}&query=${encodeURIComponent(query)}`);
+  const payload = await requestJson(pressApiUrl('orders', { press: pressId, query }));
   pressState.orders[pressId] = payload.data || [];
 
   if (pressState.selectedOrders[pressId] && !pressState.orders[pressId].some((order) => order.id === pressState.selectedOrders[pressId].id)) {
@@ -742,7 +820,7 @@ async function loadPressOrders(pressId, query = '') {
 }
 
 async function loadPressSnapshot({ quiet = false } = {}) {
-  const payload = await requestJson('/press-api.php?action=snapshot');
+  const payload = await requestJson(pressApiUrl('snapshot'));
   pressState.snapshot = payload.data;
 
   if (pressLiveStatus) {
@@ -754,6 +832,153 @@ async function loadPressSnapshot({ quiet = false } = {}) {
   if (!quiet) {
     updatePressTimers();
   }
+}
+
+async function loadPressSummary() {
+  if (!pressSummary) {
+    return;
+  }
+
+  const filters = pressState.historyFilters;
+  const payload = await requestJson(pressApiUrl('history', {
+    press: filters.press,
+    shift: filters.shift,
+    startFrom: dateTimeLocalToIso(filters.startFrom),
+    startTo: dateTimeLocalToIso(filters.startTo)
+  }));
+  pressState.summary = payload.data;
+  renderPressSummary();
+}
+
+function renderPressSummary() {
+  if (!pressSummary) {
+    return;
+  }
+
+  if (isWorkstationMode()) {
+    pressSummary.hidden = true;
+    pressSummary.innerHTML = '';
+    return;
+  }
+
+  const summary = pressState.summary;
+  if (!summary) {
+    pressSummary.hidden = true;
+    pressSummary.innerHTML = '';
+    return;
+  }
+
+  const overall = summary.overall || {};
+  const filters = pressState.historyFilters;
+  const pressOptions = (pressState.context.presses || [])
+    .map((press) => `<option value="${escapeHtml(press.id)}" ${filters.press === press.id ? 'selected' : ''}>${escapeHtml(press.label)}</option>`)
+    .join('');
+  const shiftOptions = ['Fruehschicht', 'Spaetschicht', 'Nachtschicht']
+    .map((shift) => `<option value="${escapeHtml(shift)}" ${filters.shift === shift ? 'selected' : ''}>${escapeHtml(shift)}</option>`)
+    .join('');
+  const history = summary.history || [];
+
+  pressSummary.hidden = false;
+  pressSummary.innerHTML = `
+    <details class="panel pressSummaryPanel" ${pressState.summaryOpen ? 'open' : ''}>
+      <summary class="pressSummaryToggle">
+        <div>
+          <h2>Historie gesamt</h2>
+          <span>${escapeHtml(formatNumber.format(Number(summary.historyCount || 0)))} Treffer, Stand: ${escapeHtml(dateLabel(summary.serverTime))}</span>
+        </div>
+        <strong>Details</strong>
+      </summary>
+      <form class="pressSummaryFilters">
+        <label>
+          Presse
+          <select name="press">
+            <option value="">Alle Pressen</option>
+            ${pressOptions}
+          </select>
+        </label>
+        <label>
+          Schicht
+          <select name="shift">
+            <option value="">Alle Schichten</option>
+            ${shiftOptions}
+          </select>
+        </label>
+        <label>
+          Auftragsbeginn von
+          <input type="datetime-local" name="startFrom" value="${escapeHtml(filters.startFrom)}">
+        </label>
+        <label>
+          Auftragsbeginn bis
+          <input type="datetime-local" name="startTo" value="${escapeHtml(filters.startTo)}">
+        </label>
+        <button type="button" data-action="history-reset">Filter zuruecksetzen</button>
+      </form>
+      <div class="pressSummaryMetrics">
+        <article>
+          <span>Abgeschlossen</span>
+          <strong>${escapeHtml(formatNumber.format(Number(overall.finishedCount || 0)))}</strong>
+        </article>
+        <article>
+          <span>Gesamtdauer</span>
+          <strong>${escapeHtml(durationLabel(overall.totalElapsedMs || 0))}</strong>
+        </article>
+        <article>
+          <span>Treffer angezeigt</span>
+          <strong>${escapeHtml(formatNumber.format(history.length))}</strong>
+        </article>
+      </div>
+      <div class="pressSummaryTableWrap">
+        <table class="pressSummaryTable">
+          <thead>
+            <tr>
+              <th>Presse</th>
+              <th>Abgeschlossen</th>
+              <th>Gesamtdauer</th>
+              <th>Letztes Ende</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(summary.presses || []).map((press) => `
+              <tr>
+                <td><strong>${escapeHtml(press.label)}</strong></td>
+                <td>${escapeHtml(formatNumber.format(Number(press.finishedCount || 0)))}</td>
+                <td>${escapeHtml(durationLabel(press.totalElapsedMs || 0))}</td>
+                <td>${escapeHtml(dateLabel(press.lastEndedAt))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="pressSummaryTableWrap pressHistoryTableWrap">
+        <table class="pressSummaryTable pressHistoryTable">
+          <thead>
+            <tr>
+              <th>Auftrag</th>
+              <th>Presse</th>
+              <th>Schicht</th>
+              <th>Beginn</th>
+              <th>Ende</th>
+              <th>Dauer</th>
+              <th>Pressenfuehrer</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${history.length ? history.map((run) => `
+              <tr>
+                <td><strong>${escapeHtml(run.orderId)}</strong><span>${escapeHtml(run.material || '-')}</span></td>
+                <td>${escapeHtml(run.pressLabel || run.pressId)}</td>
+                <td>${escapeHtml(run.shiftName || '-')}</td>
+                <td>${escapeHtml(dateLabel(run.startedAt))}</td>
+                <td>${escapeHtml(dateLabel(run.endedAt))}</td>
+                <td>${escapeHtml(durationLabel(run.elapsedMs))}</td>
+                <td>${escapeHtml(run.startedBy || '-')}</td>
+              </tr>
+            `).join('') : '<tr><td colspan="7">Keine historischen Auftraege fuer diese Filter.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  `;
 }
 
 function selectedOrderForPress(pressId) {
@@ -827,9 +1052,10 @@ function renderPressBoard() {
 
 function renderActiveRun(press, run, canOperate) {
   const disabled = canOperate ? '' : 'disabled';
-  const pauseButton = run.status === 'paused'
+  const hostname = pressState.context.workplace?.hostname || '-';
+  const resumeButton = run.status === 'paused'
     ? `<button type="button" data-action="resume" data-press-id="${escapeHtml(press.id)}" ${disabled}>Fortsetzen</button>`
-    : `<button type="button" class="warnButton" data-action="pause" data-press-id="${escapeHtml(press.id)}" ${disabled}>Pausieren</button>`;
+    : '';
 
   return `
     <section class="activeRun">
@@ -841,10 +1067,12 @@ function renderActiveRun(press, run, canOperate) {
       <div class="runTimer" data-run-id="${escapeHtml(run.id)}">${durationLabel(runElapsedMs(run))}</div>
       <dl class="runFacts">
         <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
-        <div><dt>Schicht</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+        <div><dt>Pressenfuehrer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+        <div><dt>Schicht</dt><dd>${escapeHtml(run.shiftName || '-')}</dd></div>
+        <div><dt>Host</dt><dd>${escapeHtml(hostname)}</dd></div>
       </dl>
       <div class="runActions">
-        ${pauseButton}
+        ${resumeButton}
         <button type="button" class="finishButton" data-action="finish" data-press-id="${escapeHtml(press.id)}" ${disabled}>Beenden</button>
       </div>
       ${canOperate ? '' : '<p class="pressHint">Bedienung nur am gewaehlten Arbeitsplatz moeglich.</p>'}
@@ -858,7 +1086,7 @@ function renderOrderPicker(press, canUsePress, canOperate) {
   const query = pressState.orderQueries[press.id] || '';
   const showResults = canUsePress && pressState.orderResultsOpen[press.id] !== false && query.trim() !== '';
   const hint = canUsePress
-    ? 'Bitte eine Schicht waehlen, um den Auftrag zu starten.'
+    ? 'Bitte einen Pressenfuehrer waehlen, um den Auftrag zu starten.'
     : 'Bitte diese Presse als Arbeitsplatz waehlen.';
 
   return `
@@ -916,7 +1144,8 @@ function renderPressHistoryRows(history) {
             <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
             <div><dt>Ende</dt><dd>${escapeHtml(dateLabel(run.endedAt))}</dd></div>
             <div><dt>Dauer</dt><dd>${escapeHtml(durationLabel(run.elapsedMs))}</dd></div>
-            <div><dt>Schicht</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+            <div><dt>Pressenfuehrer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+            <div><dt>Schicht</dt><dd>${escapeHtml(run.shiftName || '-')}</dd></div>
           </dl>
         </article>
       `).join('')}
@@ -965,14 +1194,14 @@ function pressAdminHeaders() {
 }
 
 async function loadPressAdminMappings() {
-  const payload = await requestJson('/press-api.php?action=adminWorkplaces', {
+  const payload = await requestJson(pressApiUrl('adminWorkplaces'), {
     headers: { 'X-Press-Admin-Code': pressState.adminCode }
   });
   pressState.adminMappings = payload.data || [];
 }
 
 async function savePressAdminMapping(payload) {
-  const response = await requestJson('/press-api.php?action=saveWorkplace', {
+  const response = await requestJson(pressApiUrl('saveWorkplace'), {
     method: 'POST',
     headers: pressAdminHeaders(),
     body: JSON.stringify(payload)
@@ -981,7 +1210,7 @@ async function savePressAdminMapping(payload) {
 }
 
 async function deletePressAdminMapping(id) {
-  const response = await requestJson('/press-api.php?action=deleteWorkplace', {
+  const response = await requestJson(pressApiUrl('deleteWorkplace'), {
     method: 'POST',
     headers: pressAdminHeaders(),
     body: JSON.stringify({ id })
@@ -998,7 +1227,7 @@ function renderPressAdminMappings() {
     <div class="pressAdminTableWrap">
       <table class="pressAdminTable">
         <thead>
-          <tr><th>Hostname</th><th>Presse</th><th>Arbeitsplatz</th><th>Status</th><th></th></tr>
+          <tr><th>Hostname</th><th>Presse</th><th>Arbeitsplatz</th><th>Pressenfuehrer</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${pressState.adminMappings.map((mapping) => `
@@ -1006,6 +1235,7 @@ function renderPressAdminMappings() {
               <td><strong>${escapeHtml(mapping.hostname)}</strong></td>
               <td>${escapeHtml(mapping.pressLabel || mapping.pressId)}</td>
               <td>${escapeHtml(mapping.workplaceLabel || '-')}</td>
+              <td>${escapeHtml(mapping.pressOperator || '-')}</td>
               <td>${mapping.isActive ? 'Aktiv' : 'Inaktiv'}</td>
               <td>
                 <div class="pressAdminActions">
@@ -1051,8 +1281,8 @@ function renderPressAdminDialog(error = '') {
         <form class="pressAdminForm" data-action="admin-save">
           <input type="hidden" name="id" value="">
           <label>
-            Hostname
-            <input type="text" name="hostname" placeholder="PRESS-PC-01" required>
+            Arbeitsplatzkennung / Host
+            <input type="text" name="hostname" placeholder="TFS01" required>
           </label>
           <label>
             Presse
@@ -1061,6 +1291,10 @@ function renderPressAdminDialog(error = '') {
           <label>
             Arbeitsplatzname
             <input type="text" name="workplaceLabel" placeholder="Arbeitsplatz Presse 1">
+          </label>
+          <label>
+            Pressenfuehrer
+            <input type="text" name="pressOperator" placeholder="Max Mustermann" required>
           </label>
           <label class="pressAdminCheck">
             <input type="checkbox" name="isActive" checked>
@@ -1103,6 +1337,7 @@ function renderPressAdminDialog(error = '') {
           form.elements.hostname.value = mapping.hostname;
           form.elements.pressId.value = mapping.pressId;
           form.elements.workplaceLabel.value = mapping.workplaceLabel || '';
+          form.elements.pressOperator.value = mapping.pressOperator || '';
           form.elements.isActive.checked = Boolean(mapping.isActive);
           form.elements.hostname.focus();
         }
@@ -1138,6 +1373,7 @@ function renderPressAdminDialog(error = '') {
           hostname: form.elements.hostname.value,
           pressId: form.elements.pressId.value,
           workplaceLabel: form.elements.workplaceLabel.value,
+          pressOperator: form.elements.pressOperator.value,
           isActive: form.elements.isActive.checked
         });
         renderPressAdminDialog();
@@ -1174,6 +1410,7 @@ function updatePressTimers() {
 async function postPressAction(action, pressId, order = null) {
   const payload = {
     pressId,
+    pressOperator: selectedUser(),
     user: selectedUser()
   };
 
@@ -1181,13 +1418,14 @@ async function postPressAction(action, pressId, order = null) {
     payload.order = order;
   }
 
-  const response = await requestJson(`/press-api.php?action=${encodeURIComponent(action)}`, {
+  const response = await requestJson(pressApiUrl(action), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
   pressState.snapshot = response.data;
   renderPressBoard();
+  await loadPressSummary();
 }
 
 function setupPressEvents() {
@@ -1207,12 +1445,46 @@ function setupPressEvents() {
   pressWorkplaceSelect?.addEventListener('change', () => {
     pressState.selectedPress = pressWorkplaceSelect.value;
     localStorage.setItem('scrapview.pressPress', pressState.selectedPress);
+    fillPressContext();
     loadPressOrders(pressState.selectedPress, pressState.orderQueries[pressState.selectedPress] || '').catch(showPressError);
     renderPressBoard();
   });
 
   pressAdminButton?.addEventListener('click', () => {
     renderPressAdminDialog();
+  });
+
+  pressSummary?.addEventListener('toggle', (event) => {
+    if (event.target.matches('.pressSummaryPanel')) {
+      pressState.summaryOpen = event.target.open;
+    }
+  });
+
+  pressSummary?.addEventListener('change', (event) => {
+    const field = event.target;
+    if (!field.closest('.pressSummaryFilters')) {
+      return;
+    }
+
+    pressState.summaryOpen = true;
+    pressState.historyFilters[field.name] = field.value;
+    loadPressSummary().catch(showPressError);
+  });
+
+  pressSummary?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action="history-reset"]');
+    if (!button) {
+      return;
+    }
+
+    pressState.summaryOpen = true;
+    pressState.historyFilters = {
+      press: '',
+      shift: '',
+      startFrom: '',
+      startTo: ''
+    };
+    loadPressSummary().catch(showPressError);
   });
 
   pressBoard?.addEventListener('input', (event) => {
@@ -1285,11 +1557,15 @@ async function bootPresses() {
   setupPressEvents();
   await loadPressContext();
   await loadPressSnapshot();
+  await loadPressSummary();
   await loadPressOrders(selectedPress(), pressState.orderQueries[selectedPress()] || '');
 
   pressState.clockTimer = window.setInterval(updatePressTimers, 1000);
   pressState.pollTimer = window.setInterval(() => {
     loadPressSnapshot({ quiet: true }).catch(showPressError);
+    if (!isWorkstationMode() && !pressSummary?.contains(document.activeElement)) {
+      loadPressSummary().catch(showPressError);
+    }
   }, 2000);
 }
 

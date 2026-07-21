@@ -3,16 +3,16 @@
 final class PressJobRepository
 {
     private const PRESSES = [
-        'P1' => 'Presse 1',
-        'P2' => 'Presse 2',
-        'P3' => 'Presse 3',
-        'P4' => 'Presse 4',
+        'P1' => 'TFS01 700-to',
+        'P2' => 'TFS02 2000-to',
+        'P3' => 'TFS03 1400-to',
+        'P4' => 'TFS04 2000-to',
     ];
 
-    private const DEMO_USERS = [
-        'Frühschicht',
-        'Spätschicht',
-        'Nachtschicht',
+    private const DEMO_OPERATORS = [
+        'Pressenfuehrer 1',
+        'Pressenfuehrer 2',
+        'Pressenfuehrer 3',
     ];
 
     private const ORDER_COLUMNS = ['AUFNR', 'ORDER_ID', 'ORDERID', 'FERTIGUNGSAUFTRAG'];
@@ -22,6 +22,7 @@ final class PressJobRepository
     private const UNIT_COLUMNS = ['GMEIN', 'MEINS', 'UNIT', 'EINHEIT'];
     private const START_COLUMNS = ['GSTRP', 'START_DATE', 'PLANNED_START', 'STARTDATUM'];
     private const END_COLUMNS = ['GLTRP', 'END_DATE', 'PLANNED_END', 'ENDDATUM'];
+    private const WORK_CENTER_COLUMNS = ['ARBPLZ'];
 
     private ?bool $databaseStateAvailable = null;
     private ?bool $workplaceMappingsAvailable = null;
@@ -48,7 +49,7 @@ final class PressJobRepository
         $this->assertWorkplaceMappingTable();
 
         $statement = $this->pdo->query(
-            'select id, hostname, press_id, workplace_label, is_active, created_at, updated_at
+            'select id, hostname, press_id, workplace_label, press_operator, is_active, created_at, updated_at
              from ' . $this->qualifiedWorkplaceTable() . '
              order by hostname, press_id, id'
         );
@@ -64,6 +65,7 @@ final class PressJobRepository
         $hostname = $this->normalizeHostname((string) ($payload['hostname'] ?? ''));
         $pressId = trim((string) ($payload['pressId'] ?? ''));
         $workplaceLabel = trim((string) ($payload['workplaceLabel'] ?? ''));
+        $pressOperator = trim((string) ($payload['pressOperator'] ?? ''));
         $isActive = ! empty($payload['isActive']) ? 1 : 0;
 
         $this->assertPress($pressId);
@@ -74,6 +76,7 @@ final class PressJobRepository
                  set hostname = :hostname,
                      press_id = :press_id,
                      workplace_label = :workplace_label,
+                     press_operator = :press_operator,
                      is_active = :is_active,
                      updated_at = sysdatetime()
                  where id = :id'
@@ -83,6 +86,7 @@ final class PressJobRepository
                 'hostname' => $hostname,
                 'press_id' => $pressId,
                 'workplace_label' => $workplaceLabel,
+                'press_operator' => $pressOperator,
                 'is_active' => $isActive,
             ]);
 
@@ -90,13 +94,14 @@ final class PressJobRepository
         }
 
         $statement = $this->pdo->prepare(
-            'insert into ' . $this->qualifiedWorkplaceTable() . ' (hostname, press_id, workplace_label, is_active)
-             values (:hostname, :press_id, :workplace_label, :is_active)'
+            'insert into ' . $this->qualifiedWorkplaceTable() . ' (hostname, press_id, workplace_label, press_operator, is_active)
+             values (:hostname, :press_id, :workplace_label, :press_operator, :is_active)'
         );
         $statement->execute([
             'hostname' => $hostname,
             'press_id' => $pressId,
             'workplace_label' => $workplaceLabel,
+            'press_operator' => $pressOperator,
             'is_active' => $isActive,
         ]);
 
@@ -171,11 +176,168 @@ final class PressJobRepository
         ];
     }
 
-    public function start(string $pressId, array $order, string $user): array
+    public function summary(): array
+    {
+        $runs = $this->usesFileState()
+            ? $this->demoRuns()
+            : $this->allDatabaseRuns();
+
+        $summaryByPress = [];
+        foreach ($this->presses() as $press) {
+            $summaryByPress[$press['id']] = [
+                ...$press,
+                'finishedCount' => 0,
+                'activeCount' => 0,
+                'pausedCount' => 0,
+                'totalElapsedMs' => 0,
+                'lastEndedAt' => '',
+            ];
+        }
+
+        foreach ($runs as $run) {
+            $mapped = $this->mapRun($run);
+            $pressId = $mapped['pressId'];
+
+            if (! isset($summaryByPress[$pressId])) {
+                continue;
+            }
+
+            if ($mapped['status'] === 'active') {
+                $summaryByPress[$pressId]['activeCount']++;
+                continue;
+            }
+
+            if ($mapped['status'] === 'paused') {
+                $summaryByPress[$pressId]['pausedCount']++;
+                continue;
+            }
+
+            $summaryByPress[$pressId]['finishedCount']++;
+            $summaryByPress[$pressId]['totalElapsedMs'] += (int) $mapped['elapsedMs'];
+
+            if ($mapped['endedAt'] !== '' && strcmp($mapped['endedAt'], (string) $summaryByPress[$pressId]['lastEndedAt']) > 0) {
+                $summaryByPress[$pressId]['lastEndedAt'] = $mapped['endedAt'];
+            }
+        }
+
+        $overall = [
+            'finishedCount' => 0,
+            'activeCount' => 0,
+            'pausedCount' => 0,
+            'totalElapsedMs' => 0,
+        ];
+
+        foreach ($summaryByPress as $pressSummary) {
+            $overall['finishedCount'] += (int) $pressSummary['finishedCount'];
+            $overall['activeCount'] += (int) $pressSummary['activeCount'];
+            $overall['pausedCount'] += (int) $pressSummary['pausedCount'];
+            $overall['totalElapsedMs'] += (int) $pressSummary['totalElapsedMs'];
+        }
+
+        return [
+            'serverTime' => $this->nowIso(),
+            'overall' => $overall,
+            'presses' => array_values($summaryByPress),
+        ];
+    }
+
+    public function history(array $filters = []): array
+    {
+        $runs = $this->usesFileState()
+            ? $this->demoRuns()
+            : $this->allDatabaseRuns();
+
+        $pressFilter = trim((string) ($filters['press'] ?? ''));
+        $shiftFilter = trim((string) ($filters['shift'] ?? ''));
+        $startFrom = $this->dateValue($filters['startFrom'] ?? '');
+        $startTo = $this->dateValue($filters['startTo'] ?? '');
+
+        $summaryByPress = [];
+        foreach ($this->presses() as $press) {
+            $summaryByPress[$press['id']] = [
+                ...$press,
+                'finishedCount' => 0,
+                'totalElapsedMs' => 0,
+                'lastEndedAt' => '',
+            ];
+        }
+
+        $history = [];
+        foreach ($runs as $run) {
+            $mapped = $this->mapRun($run);
+
+            if ($mapped['status'] !== 'finished') {
+                continue;
+            }
+
+            if ($pressFilter !== '' && $mapped['pressId'] !== $pressFilter) {
+                continue;
+            }
+
+            if ($shiftFilter !== '' && $mapped['shiftName'] !== $shiftFilter) {
+                continue;
+            }
+
+            if ($startFrom !== '' || $startTo !== '') {
+                $startedTimestamp = strtotime($mapped['startedAt']);
+
+                if ($mapped['startedAt'] === '' || $startedTimestamp === false) {
+                    continue;
+                }
+
+                $fromTimestamp = $startFrom !== '' ? strtotime($startFrom) : false;
+                if ($fromTimestamp !== false && $startedTimestamp < $fromTimestamp) {
+                    continue;
+                }
+
+                $toTimestamp = $startTo !== '' ? strtotime($startTo) : false;
+                if ($toTimestamp !== false && $startedTimestamp > $toTimestamp) {
+                    continue;
+                }
+            }
+
+            if (! isset($summaryByPress[$mapped['pressId']])) {
+                continue;
+            }
+
+            $summaryByPress[$mapped['pressId']]['finishedCount']++;
+            $summaryByPress[$mapped['pressId']]['totalElapsedMs'] += (int) $mapped['elapsedMs'];
+
+            if ($mapped['endedAt'] !== '' && strcmp($mapped['endedAt'], (string) $summaryByPress[$mapped['pressId']]['lastEndedAt']) > 0) {
+                $summaryByPress[$mapped['pressId']]['lastEndedAt'] = $mapped['endedAt'];
+            }
+
+            $history[] = $mapped;
+        }
+
+        usort($history, static fn (array $left, array $right): int => strcmp((string) $right['startedAt'], (string) $left['startedAt']));
+
+        $overall = [
+            'finishedCount' => 0,
+            'totalElapsedMs' => 0,
+        ];
+
+        foreach ($summaryByPress as $pressSummary) {
+            $overall['finishedCount'] += (int) $pressSummary['finishedCount'];
+            $overall['totalElapsedMs'] += (int) $pressSummary['totalElapsedMs'];
+        }
+
+        return [
+            'serverTime' => $this->nowIso(),
+            'overall' => $overall,
+            'presses' => array_values($summaryByPress),
+            'historyCount' => count($history),
+            'history' => array_slice($history, 0, 250),
+        ];
+    }
+
+    public function start(string $pressId, array $order, string $operator): array
     {
         $this->assertPress($pressId);
         $this->assertWorkplaceAccess($pressId);
-        $user = $this->normalizeUser($user);
+        $operator = $this->normalizeOperator($operator);
+        $this->assertOperatorForPress($pressId, $operator);
+        $shiftName = $this->currentShiftName();
         $orderId = trim((string) ($order['id'] ?? ''));
 
         if ($orderId === '') {
@@ -200,7 +362,8 @@ final class PressJobRepository
                 'planned_start' => (string) ($order['plannedStart'] ?? ''),
                 'planned_end' => (string) ($order['plannedEnd'] ?? ''),
                 'status' => 'active',
-                'started_by' => $user,
+                'started_by' => $operator,
+                'shift_name' => $shiftName,
                 'ended_by' => '',
                 'started_at' => $this->nowIso(),
                 'ended_at' => '',
@@ -215,10 +378,10 @@ final class PressJobRepository
         $statement = $this->pdo->prepare(
             'insert into dbo.press_job_runs (
                 press_id, order_id, order_label, material, description, quantity, unit,
-                planned_start, planned_end, status, started_by, started_at
+                planned_start, planned_end, status, started_by, shift_name, started_at
              ) values (
                 :press_id, :order_id, :order_label, :material, :description, :quantity, :unit,
-                :planned_start, :planned_end, :status, :started_by, sysdatetime()
+                :planned_start, :planned_end, :status, :started_by, :shift_name, sysdatetime()
              )'
         );
         $statement->execute([
@@ -232,32 +395,34 @@ final class PressJobRepository
             'planned_start' => (string) ($order['plannedStart'] ?? ''),
             'planned_end' => (string) ($order['plannedEnd'] ?? ''),
             'status' => 'active',
-            'started_by' => $user,
+            'started_by' => $operator,
+            'shift_name' => $shiftName,
         ]);
 
         return $this->snapshot();
     }
 
-    public function pause(string $pressId, string $user): array
+    public function pause(string $pressId, string $operator): array
     {
-        return $this->changeState($pressId, $user, 'pause');
+        return $this->changeState($pressId, $operator, 'pause');
     }
 
-    public function resume(string $pressId, string $user): array
+    public function resume(string $pressId, string $operator): array
     {
-        return $this->changeState($pressId, $user, 'resume');
+        return $this->changeState($pressId, $operator, 'resume');
     }
 
-    public function finish(string $pressId, string $user): array
+    public function finish(string $pressId, string $operator): array
     {
-        return $this->changeState($pressId, $user, 'finish');
+        return $this->changeState($pressId, $operator, 'finish');
     }
 
-    private function changeState(string $pressId, string $user, string $action): array
+    private function changeState(string $pressId, string $operator, string $action): array
     {
         $this->assertPress($pressId);
         $this->assertWorkplaceAccess($pressId);
-        $user = $this->normalizeUser($user);
+        $operator = $this->normalizeOperator($operator);
+        $this->assertOperatorForPress($pressId, $operator);
 
         if ($this->usesFileState()) {
             $runs = $this->demoRuns();
@@ -281,7 +446,7 @@ final class PressJobRepository
                     }
                     $run['status'] = 'finished';
                     $run['ended_at'] = $now;
-                    $run['ended_by'] = $user;
+                    $run['ended_by'] = $operator;
                     $run['pause_started_at'] = '';
                 }
 
@@ -336,7 +501,7 @@ final class PressJobRepository
                      pause_started_at = null
                  where id = :id"
             );
-            $statement->execute(['id' => $run['id'], 'ended_by' => $user]);
+            $statement->execute(['id' => $run['id'], 'ended_by' => $operator]);
         }
 
         return $this->snapshot();
@@ -377,6 +542,17 @@ final class PressJobRepository
         return $statement->fetchAll();
     }
 
+    private function allDatabaseRuns(): array
+    {
+        $statement = $this->pdo->query(
+            "select *
+             from dbo.press_job_runs
+             order by started_at desc"
+        );
+
+        return $statement->fetchAll();
+    }
+
     private function loiproOrders(string $query): array
     {
         $columns = $this->loiproColumns();
@@ -396,6 +572,11 @@ final class PressJobRepository
         $unitColumn = $this->firstExistingColumn($columns, getenv('PRESS_UNIT_COLUMN') ?: '', self::UNIT_COLUMNS);
         $startColumn = $this->firstExistingColumn($columns, getenv('PRESS_PLANNED_START_COLUMN') ?: '', self::START_COLUMNS);
         $endColumn = $this->firstExistingColumn($columns, getenv('PRESS_PLANNED_END_COLUMN') ?: '', self::END_COLUMNS);
+        $workCenterColumn = $this->firstExistingColumn($columns, getenv('PRESS_WORK_CENTER_COLUMN') ?: '', self::WORK_CENTER_COLUMNS);
+        if ($workCenterColumn === null) {
+            throw new RuntimeException('In LOIPRO wurde keine Arbeitsplatz-Spalte ARBPLZ gefunden. Bitte PRESS_WORK_CENTER_COLUMN setzen.');
+        }
+
         $select = [
             $this->quoteIdentifier($orderColumn) . ' as order_id',
             $materialColumn ? $this->quoteIdentifier($materialColumn) . ' as material' : "cast('' as nvarchar(1)) as material",
@@ -405,8 +586,11 @@ final class PressJobRepository
             $startColumn ? $this->quoteIdentifier($startColumn) . ' as planned_start' : "cast('' as nvarchar(1)) as planned_start",
             $endColumn ? $this->quoteIdentifier($endColumn) . ' as planned_end' : "cast('' as nvarchar(1)) as planned_end",
         ];
-        $params = [];
-        $where = $this->quoteIdentifier($orderColumn) . ' is not null';
+        $params = [
+            'work_center' => strtoupper(trim((string) (getenv('PRESS_WORK_CENTER_VALUE') ?: 'EINSTE'))),
+        ];
+        $where = $this->quoteIdentifier($orderColumn) . ' is not null
+             and upper(cast(' . $this->quoteIdentifier($workCenterColumn) . ' as nvarchar(120))) = :work_center';
 
         if ($query !== '') {
             $where .= ' and (
@@ -500,9 +684,14 @@ final class PressJobRepository
         $endedAt = $this->dateValue($row['ended_at'] ?? '');
         $pauseStartedAt = $this->dateValue($row['pause_started_at'] ?? '');
         $pausedMs = (int) ($row['paused_ms'] ?? 0);
+        $shiftName = (string) ($row['shift_name'] ?? '');
 
         if (($row['status'] ?? '') === 'paused' && $pauseStartedAt !== '') {
             $pausedMs += $this->millisBetween($pauseStartedAt, $this->nowIso());
+        }
+
+        if ($shiftName === '' && $startedAt !== '') {
+            $shiftName = $this->shiftNameForDate($startedAt);
         }
 
         return [
@@ -519,6 +708,7 @@ final class PressJobRepository
             'plannedEnd' => (string) ($row['planned_end'] ?? ''),
             'status' => (string) ($row['status'] ?? ''),
             'startedBy' => (string) ($row['started_by'] ?? ''),
+            'shiftName' => $shiftName,
             'endedBy' => (string) ($row['ended_by'] ?? ''),
             'startedAt' => $startedAt,
             'endedAt' => $endedAt,
@@ -539,9 +729,9 @@ final class PressJobRepository
 
     private function users(): array
     {
-        $configured = array_values(array_filter(array_map('trim', explode(',', (string) (getenv('PRESS_USERS') ?: '')))));
+        $configured = array_values(array_filter(array_map('trim', explode(',', (string) (getenv('PRESS_OPERATORS') ?: '')))));
 
-        return $configured !== [] ? $configured : self::DEMO_USERS;
+        return $configured !== [] ? $configured : self::DEMO_OPERATORS;
     }
 
     private function assertWorkplaceMappingTable(): void
@@ -549,6 +739,8 @@ final class PressJobRepository
         if (! $this->canUseWorkplaceMappings()) {
             throw new RuntimeException('Die Arbeitsplatz-Zuordnungstabelle ist nicht verfuegbar.');
         }
+
+        $this->ensureWorkplaceMappingSchema();
     }
 
     private function normalizeHostname(string $hostname): string
@@ -573,6 +765,7 @@ final class PressJobRepository
             'pressId' => $pressId,
             'pressLabel' => self::PRESSES[$pressId] ?? $pressId,
             'workplaceLabel' => trim((string) ($row['workplace_label'] ?? '')),
+            'pressOperator' => trim((string) ($row['press_operator'] ?? '')),
             'isActive' => (bool) ($row['is_active'] ?? false),
             'createdAt' => $this->dateValue($row['created_at'] ?? ''),
             'updatedAt' => $this->dateValue($row['updated_at'] ?? ''),
@@ -616,17 +809,23 @@ final class PressJobRepository
             return [];
         }
 
+        $this->ensureWorkplaceMappingSchema();
         $shortHostname = explode('.', $this->clientHostname)[0] ?? $this->clientHostname;
         $statement = $this->pdo->prepare(
-            'select press_id, workplace_label
+            'select press_id, workplace_label, press_operator
              from ' . $this->qualifiedWorkplaceTable() . '
              where is_active = 1
-               and upper(hostname) in (:hostname, :short_hostname)
+               and (
+                    upper(hostname) in (:hostname, :short_hostname)
+                    or upper(workplace_label) in (:workplace, :short_workplace)
+               )
              order by press_id'
         );
         $statement->execute([
             'hostname' => strtoupper($this->clientHostname),
             'short_hostname' => strtoupper($shortHostname),
+            'workplace' => strtoupper($this->clientHostname),
+            'short_workplace' => strtoupper($shortHostname),
         ]);
 
         return array_values(array_filter(array_map(function (array $row): array {
@@ -640,6 +839,7 @@ final class PressJobRepository
                 'pressId' => $pressId,
                 'pressLabel' => self::PRESSES[$pressId],
                 'workplaceLabel' => trim((string) ($row['workplace_label'] ?? '')),
+                'pressOperator' => trim((string) ($row['press_operator'] ?? '')),
             ];
         }, $statement->fetchAll())));
     }
@@ -708,15 +908,59 @@ final class PressJobRepository
         }
     }
 
-    private function normalizeUser(string $user): string
+    private function normalizeOperator(string $operator): string
     {
-        $user = trim($user);
+        $operator = trim($operator);
 
-        if ($user === '') {
-            throw new InvalidArgumentException('Bitte eine Schicht auswaehlen.');
+        if ($operator === '') {
+            throw new InvalidArgumentException('Bitte einen Pressenfuehrer auswaehlen.');
         }
 
-        return $user;
+        return $operator;
+    }
+
+    private function assertOperatorForPress(string $pressId, string $operator): void
+    {
+        if (! $this->canUseWorkplaceMappings()) {
+            return;
+        }
+
+        $operators = array_values(array_filter(array_map(
+            static fn (array $assignment): string => trim((string) ($assignment['pressOperator'] ?? '')),
+            array_filter(
+                $this->workplaceAssignmentsForClient(),
+                static fn (array $assignment): bool => ($assignment['pressId'] ?? '') === $pressId
+            )
+        )));
+
+        if ($operators === []) {
+            throw new RuntimeException('Fuer diese Presse ist kein Pressenfuehrer im Adminbereich hinterlegt.');
+        }
+
+        if (! in_array($operator, $operators, true)) {
+            throw new RuntimeException('Dieser Pressenfuehrer ist fuer diese Presse nicht freigegeben.');
+        }
+    }
+
+    private function currentShiftName(): string
+    {
+        return $this->shiftNameForDate('now');
+    }
+
+    private function shiftNameForDate(string $value): string
+    {
+        $date = new DateTimeImmutable($value, new DateTimeZone('UTC'));
+        $hour = (int) $date->setTimezone($this->databaseTimezone())->format('G');
+
+        if ($hour >= 6 && $hour < 14) {
+            return 'Fruehschicht';
+        }
+
+        if ($hour >= 14 && $hour < 22) {
+            return 'Spaetschicht';
+        }
+
+        return 'Nachtschicht';
     }
 
     private function ensureSchema(): void
@@ -736,12 +980,27 @@ final class PressJobRepository
                 planned_end nvarchar(80) null,
                 status nvarchar(20) not null,
                 started_by nvarchar(120) not null,
+                shift_name nvarchar(40) null,
                 ended_by nvarchar(120) null,
                 started_at datetime2 not null default sysdatetime(),
                 ended_at datetime2 null,
                 pause_started_at datetime2 null,
                 paused_ms bigint not null default 0
              )"
+        );
+
+        $this->pdo->exec(
+            "if col_length('dbo.press_job_runs', 'shift_name') is null
+             alter table dbo.press_job_runs add shift_name nvarchar(40) null"
+        );
+    }
+
+    private function ensureWorkplaceMappingSchema(): void
+    {
+        $objectName = str_replace("'", "''", $this->workplaceObjectName());
+        $this->pdo->exec(
+            "if col_length('{$objectName}', 'press_operator') is null
+             alter table " . $this->qualifiedWorkplaceTable() . ' add press_operator nvarchar(120) null'
         );
     }
 

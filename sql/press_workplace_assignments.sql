@@ -5,10 +5,16 @@ begin
         hostname nvarchar(255) not null,
         press_id nvarchar(40) not null,
         workplace_label nvarchar(120) null,
+        press_operator nvarchar(120) null,
         is_active bit not null default 1,
         created_at datetime2 not null default sysdatetime(),
         updated_at datetime2 null
     );
+end;
+
+if col_length('dbo.press_workplace_assignments', 'press_operator') is null
+begin
+    alter table dbo.press_workplace_assignments add press_operator nvarchar(120) null;
 end;
 
 if not exists (
@@ -23,5 +29,5 @@ begin
 end;
 
 -- Beispiel:
--- insert into dbo.press_workplace_assignments (hostname, press_id, workplace_label)
--- values ('PRESS-PC-01', 'P1', 'Arbeitsplatz Presse 1');
+-- insert into dbo.press_workplace_assignments (hostname, press_id, workplace_label, press_operator)
+-- values ('PRESS-PC-01', 'P1', 'Arbeitsplatz Presse 1', 'Max Mustermann');

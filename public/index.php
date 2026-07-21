@@ -16,8 +16,7 @@
         </header>
 
         <nav class="moduleNav" aria-label="Ansichten">
-            <button class="moduleTab isActive" type="button" data-view="analyticsView">Ausschussanalyse</button>
-            <button class="moduleTab" type="button" data-view="pressView" hidden>Pressenauftraege</button>
+            <button class="moduleTab" type="button" data-view="pressView">Pressenauftraege</button>
         </nav>
 
         <section id="analyticsView" class="moduleView isActive">
@@ -107,16 +106,17 @@
                 <div class="panelHeader">
                     <div>
                         <h2>Pressenauftraege</h2>
-                        <span>Schicht und Arbeitsplatz auswaehlen</span>
+                        <span>Pressenfuehrer und Arbeitsplatz auswaehlen</span>
                     </div>
                     <div class="pressHeaderTools">
                         <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
                         <button type="button" id="pressAdminButton">Admin</button>
+                        <span id="pressHeaderHost" class="pressHeaderHost">Host: -</span>
                     </div>
                 </div>
                 <div class="pressLoginGrid">
                     <label>
-                        Schicht
+                        Pressenfuehrer
                         <select id="pressUserSelect"></select>
                     </label>
                     <label>
@@ -127,6 +127,7 @@
             </section>
 
             <section class="pressBoard" id="pressBoard" aria-label="Pressen"></section>
+            <section class="pressSummary" id="pressSummary" aria-label="Pressen-Historie gesamt"></section>
         </section>
     </main>
 

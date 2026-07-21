@@ -185,6 +185,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -199,6 +200,13 @@ button:hover {
 .pressHeaderTools button:focus {
   background: var(--accent);
   color: #ffffff;
+}
+
+.pressHeaderHost {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
 }
 
 .rangeControl {
@@ -409,6 +417,141 @@ input[type="range"] {
   color: var(--text);
   font: inherit;
   padding: 10px 11px;
+}
+
+.pressSummary {
+  margin-top: 18px;
+}
+
+.pressSummary[hidden] {
+  display: none;
+}
+
+.pressSummaryToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.pressSummaryToggle::-webkit-details-marker {
+  display: none;
+}
+
+.pressSummaryToggle h2 {
+  margin: 0;
+}
+
+.pressSummaryToggle span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pressSummaryToggle strong {
+  color: var(--accent-2);
+  font-size: 13px;
+}
+
+.pressSummaryFilters {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 12px;
+}
+
+.pressSummaryFilters label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pressSummaryFilters select,
+.pressSummaryFilters input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.pressSummaryFilters button {
+  align-self: end;
+  min-height: 39px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--accent-2);
+}
+
+.pressSummaryMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.pressSummaryMetrics article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 12px;
+}
+
+.pressSummaryMetrics span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.pressSummaryMetrics strong {
+  font-size: 24px;
+}
+
+.pressSummaryTableWrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.pressSummaryTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pressSummaryTable th,
+.pressSummaryTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.pressSummaryTable th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.pressSummaryTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.pressHistoryTableWrap {
+  margin-top: 12px;
+}
+
+.pressHistoryTable td span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .pressBoard {
@@ -1084,6 +1227,7 @@ input[type="range"] {
 @media (max-width: 820px) {
   .topbar,
   .panelHeader,
+  .pressSummaryToggle,
   .rangeLabels {
     align-items: flex-start;
     flex-direction: column;
@@ -1094,6 +1238,8 @@ input[type="range"] {
   }
 
   .pressLoginGrid,
+  .pressSummaryFilters,
+  .pressSummaryMetrics,
   .pressBoard,
   .chartLayout {
     grid-template-columns: 1fr;

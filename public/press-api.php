@@ -43,20 +43,45 @@ function requireAdminCode(): void
     }
 }
 
+function stationTokens(): array
+{
+    $configured = trim((string) (getenv('PRESS_STATION_TOKENS') ?: ''));
+    if ($configured !== '') {
+        $decoded = json_decode($configured, true);
+        if (is_array($decoded)) {
+            return array_change_key_case(array_map('strval', $decoded), CASE_UPPER);
+        }
+    }
+
+    return [
+        '47821DE8D8E2E66EE2F4A84D6CA47428' => 'TFS01',
+        '0A393D8BE77F4C4B66CBDE2672694B31' => 'TFS02',
+        'ADD0399B7C847587C25CA24DF0EAF954' => 'TFS03',
+        'DF85CF7D2A8A92E70404B4E1787F6FAF' => 'TFS04',
+    ];
+}
+
 function clientHostname(): string
 {
+    $stationToken = strtoupper(trim((string) ($_GET['station'] ?? '')));
+    if ($stationToken !== '') {
+        $stationToken = preg_replace('/[^A-Z0-9._-]/', '', $stationToken) ?: $stationToken;
+        $tokens = stationTokens();
+
+        if (! array_key_exists($stationToken, $tokens)) {
+            throw new InvalidArgumentException('Arbeitsplatz-Token ist ungueltig.');
+        }
+
+        return strtoupper($tokens[$stationToken]);
+    }
+
     $candidates = [
         $_SERVER['HTTP_X_WORKSTATION_HOST'] ?? '',
         $_SERVER['HTTP_X_CLIENT_HOSTNAME'] ?? '',
+        explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''))[0] ?? '',
+        $_SERVER['HTTP_X_REAL_IP'] ?? '',
         $_SERVER['REMOTE_HOST'] ?? '',
     ];
-
-    $remoteAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
-    if ($remoteAddress !== '') {
-        $resolved = gethostbyaddr($remoteAddress);
-        $candidates[] = $resolved !== false ? $resolved : '';
-        $candidates[] = $remoteAddress;
-    }
 
     foreach ($candidates as $candidate) {
         $candidate = trim((string) $candidate);
@@ -101,6 +126,16 @@ try {
         return;
     }
 
+    if ($action === 'summary') {
+        jsonResponse(['data' => $repository->summary()]);
+        return;
+    }
+
+    if ($action === 'history') {
+        jsonResponse(['data' => $repository->history($_GET)]);
+        return;
+    }
+
     if ($action === 'adminWorkplaces') {
         requireAdminCode();
         jsonResponse(['data' => $repository->adminWorkplaceMappings()]);
@@ -114,25 +149,25 @@ try {
 
     $payload = requestPayload();
     $pressId = (string) ($payload['pressId'] ?? '');
-    $user = (string) ($payload['user'] ?? '');
+    $operator = (string) ($payload['pressOperator'] ?? $payload['user'] ?? '');
 
     if ($action === 'start') {
-        jsonResponse(['data' => $repository->start($pressId, (array) ($payload['order'] ?? []), $user)], 201);
+        jsonResponse(['data' => $repository->start($pressId, (array) ($payload['order'] ?? []), $operator)], 201);
         return;
     }
 
     if ($action === 'pause') {
-        jsonResponse(['data' => $repository->pause($pressId, $user)]);
+        jsonResponse(['data' => $repository->pause($pressId, $operator)]);
         return;
     }
 
     if ($action === 'resume') {
-        jsonResponse(['data' => $repository->resume($pressId, $user)]);
+        jsonResponse(['data' => $repository->resume($pressId, $operator)]);
         return;
     }
 
     if ($action === 'finish') {
-        jsonResponse(['data' => $repository->finish($pressId, $user)]);
+        jsonResponse(['data' => $repository->finish($pressId, $operator)]);
         return;
     }
 
