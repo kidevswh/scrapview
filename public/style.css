@@ -59,7 +59,8 @@ h2 {
 }
 
 h1 {
-  font-size: 34px;
+  font-size: 32px;
+  line-height: 1.1;
 }
 
 h2 {
@@ -187,6 +188,7 @@ button:hover {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
+  margin-bottom: 0;
 }
 
 .pressHeaderTools button {
@@ -205,8 +207,56 @@ button:hover {
 .pressHeaderHost {
   flex-basis: 100%;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 16px;
   text-align: right;
+}
+
+.pressLoginPanel {
+  display: grid;
+  grid-template-columns: minmax(340px, 2fr) minmax(260px, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.pressLoginPanel .pressHeaderTools {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.pressWorkplaceDisplay {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  gap: 8px;
+  min-height: 80px;
+  justify-content: start;
+  align-content: center;
+}
+
+.pressWorkplaceDisplay span {
+  color: #40566a;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.pressWorkplaceDisplay strong {
+  color: var(--text);
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.pressWorkplaceDisplay small {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.hiddenPressSelect {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .rangeControl {
@@ -392,7 +442,6 @@ input[type="range"] {
   text-align: right;
 }
 
-.pressLoginPanel label,
 .orderPicker label {
   display: grid;
   gap: 7px;
@@ -401,13 +450,6 @@ input[type="range"] {
   font-weight: 700;
 }
 
-.pressLoginGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
-  gap: 14px;
-}
-
-.pressLoginGrid select,
 .orderPicker select,
 .orderPicker input {
   min-width: 0;
@@ -574,14 +616,21 @@ input[type="range"] {
 
 .pressCard.isWorkplace {
   border-color: var(--accent);
+  border-width: 2px;
+  border-left-width: 8px;
+  box-shadow: 0 0 0 3px rgba(0, 169, 232, 0.18), var(--shadow);
 }
 
 .pressCard.isRunning {
-  border-left-color: #16a34a;
+  border-left-color: #f59e0b;
 }
 
 .pressCard.isPaused {
   border-left-color: var(--warn);
+}
+
+.pressCard.isWorkplace.isRunning {
+  border-left-color: #16a34a;
 }
 
 .pressCardHeader {
@@ -617,10 +666,29 @@ input[type="range"] {
 .pressStatus {
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #edf7fb;
-  color: var(--accent-2);
   font-size: 12px;
+  font-weight: 800;
   padding: 5px 8px;
+}
+
+.pressStatus.isReady {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.pressStatus.isRunning {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.pressStatus.isPaused {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.pressStatus.isFinished {
+  background: #e5e7eb;
+  color: #4b5563;
 }
 
 .historyButton {
@@ -1237,7 +1305,7 @@ input[type="range"] {
     grid-template-columns: 1fr;
   }
 
-  .pressLoginGrid,
+  .pressLoginPanel,
   .pressSummaryFilters,
   .pressSummaryMetrics,
   .pressBoard,

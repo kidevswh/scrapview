@@ -3,14 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ScrapAnalytics</title>
+    <title>Scrap Analytics - Pressauftraege</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <main class="shell">
         <header class="topbar">
             <div>
-                <h1>ScrapAnalytics</h1>
+                <h1>Scrap Analytics - Pressauftraege</h1>
             </div>
             <img class="brandLogo" src="/images/LogoSWH.png" alt="Sungwoo Hitech">
         </header>
@@ -103,27 +103,17 @@
 
         <section id="pressView" class="moduleView">
             <section class="panel pressLoginPanel">
-                <div class="panelHeader">
-                    <div>
-                        <h2>Pressenauftraege</h2>
-                        <span>Pressenfuehrer und Arbeitsplatz auswaehlen</span>
-                    </div>
-                    <div class="pressHeaderTools">
-                        <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
-                        <button type="button" id="pressAdminButton">Admin</button>
-                        <span id="pressHeaderHost" class="pressHeaderHost">Host: -</span>
-                    </div>
+                <div class="pressHeaderTools">
+                    <span id="pressLiveStatus">Live-Verbindung wird vorbereitet...</span>
+                    <button type="button" id="pressAdminButton">Admin</button>
+                    <span id="pressHeaderHost" class="pressHeaderHost">Host: -</span>
                 </div>
-                <div class="pressLoginGrid">
-                    <label>
-                        Pressenfuehrer
-                        <select id="pressUserSelect"></select>
-                    </label>
-                    <label>
-                        Arbeitsplatz / Presse
-                        <select id="pressWorkplaceSelect"></select>
-                    </label>
+                <div class="pressWorkplaceDisplay" id="pressWorkplaceDisplay">
+                    <span>Arbeitsplatz / Presse</span>
+                    <strong id="pressWorkplaceName">-</strong>
+                    <small id="pressWorkplaceMode">Arbeitsplatz wird geladen...</small>
                 </div>
+                <select id="pressWorkplaceSelect" class="hiddenPressSelect" aria-hidden="true" tabindex="-1"></select>
             </section>
 
             <section class="pressBoard" id="pressBoard" aria-label="Pressen"></section>

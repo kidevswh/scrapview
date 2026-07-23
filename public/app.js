@@ -620,7 +620,6 @@ function showError(error) {
 const pressState = {
   context: { presses: [], users: [] },
   snapshot: { presses: [], serverTime: null },
-  selectedUser: localStorage.getItem('scrapview.pressUser') || '',
   selectedPress: localStorage.getItem('scrapview.pressPress') || '',
   orders: {},
   orderQueries: {},
@@ -643,8 +642,9 @@ const pressState = {
 
 const pressBoard = document.querySelector('#pressBoard');
 const pressSummary = document.querySelector('#pressSummary');
-const pressUserSelect = document.querySelector('#pressUserSelect');
 const pressWorkplaceSelect = document.querySelector('#pressWorkplaceSelect');
+const pressWorkplaceName = document.querySelector('#pressWorkplaceName');
+const pressWorkplaceMode = document.querySelector('#pressWorkplaceMode');
 const pressLiveStatus = document.querySelector('#pressLiveStatus');
 const pressAdminButton = document.querySelector('#pressAdminButton');
 const pressHeaderHost = document.querySelector('#pressHeaderHost');
@@ -671,6 +671,14 @@ function pressStatusLabel(status) {
     paused: 'Stoerung / Pause',
     finished: 'Beendet'
   }[status] || 'Bereit';
+}
+
+function pressStatusClass(status) {
+  return {
+    active: 'isRunning',
+    paused: 'isPaused',
+    finished: 'isFinished'
+  }[status] || 'isReady';
 }
 
 function durationLabel(milliseconds) {
@@ -705,43 +713,38 @@ function runElapsedMs(run) {
   return Math.max(0, end - start - paused);
 }
 
-function selectedUser() {
-  return pressUserSelect ? pressUserSelect.value : pressState.selectedUser || '';
-}
-
 function selectedPress() {
   return pressWorkplaceSelect ? pressWorkplaceSelect.value : pressState.selectedPress || '';
 }
 
-function operatorsForPress(pressId) {
-  const workplace = pressState.context.workplace || {};
-  const assignments = workplace.assignments || [];
-  const operators = assignments
-    .filter((assignment) => assignment.pressId === pressId)
-    .map((assignment) => String(assignment.pressOperator || '').trim())
-    .filter(Boolean);
+function selectedPressLabel() {
+  const pressId = selectedPress();
+  const press = (pressState.context.presses || []).find((item) => item.id === pressId);
 
-  if (operators.length > 0) {
-    return Array.from(new Set(operators));
+  return press?.label || pressId || '-';
+}
+
+function updatePressWorkplaceDisplay() {
+  if (pressWorkplaceName) {
+    pressWorkplaceName.textContent = selectedPressLabel();
   }
 
-  return workplace.mappingAvailable ? [] : (pressState.context.users || []);
+  if (pressWorkplaceMode) {
+    pressWorkplaceMode.textContent = workstationCode() ? 'Arbeitsplatz-Launcher aktiv' : 'Allgemeine Ansicht';
+  }
 }
 
 function fillPressContext() {
-  if (!pressUserSelect || !pressWorkplaceSelect) {
+  if (!pressWorkplaceSelect) {
     return;
   }
 
   if (!isWorkstationMode()) {
     pressWorkplaceSelect.innerHTML = '<option value="">Allgemeine Ansicht</option>';
     pressWorkplaceSelect.disabled = true;
-    pressUserSelect.innerHTML = '<option value="">Nur Ansicht</option>';
-    pressUserSelect.disabled = true;
     pressState.selectedPress = '';
-    pressState.selectedUser = '';
     localStorage.removeItem('scrapview.pressPress');
-    localStorage.removeItem('scrapview.pressUser');
+    updatePressWorkplaceDisplay();
     return;
   }
 
@@ -772,27 +775,7 @@ function fillPressContext() {
   }
 
   pressWorkplaceSelect.disabled = mappingAvailable && availablePresses.length <= 1;
-
-  const operators = operatorsForPress(pressWorkplaceSelect.value);
-  pressUserSelect.innerHTML = '<option value="">' + (operators.length === 0 ? 'Kein Pressenfuehrer hinterlegt' : 'Pressenfuehrer waehlen') + '</option>' + operators
-    .map((operator) => `<option value="${escapeHtml(operator)}">${escapeHtml(operator)}</option>`)
-    .join('');
-  pressUserSelect.disabled = operators.length === 0;
-
-  if (pressState.selectedUser && operators.includes(pressState.selectedUser)) {
-    pressUserSelect.value = pressState.selectedUser;
-  }
-
-  if (!pressUserSelect.value && operators.length === 1) {
-    pressUserSelect.value = operators[0];
-    pressState.selectedUser = operators[0];
-    localStorage.setItem('scrapview.pressUser', pressState.selectedUser);
-  }
-
-  if (!pressUserSelect.value) {
-    pressState.selectedUser = '';
-    localStorage.removeItem('scrapview.pressUser');
-  }
+  updatePressWorkplaceDisplay();
 }
 
 async function loadPressContext() {
@@ -959,7 +942,7 @@ function renderPressSummary() {
               <th>Beginn</th>
               <th>Ende</th>
               <th>Dauer</th>
-              <th>Pressenfuehrer</th>
+              <th>Arbeitsplatz</th>
             </tr>
           </thead>
           <tbody>
@@ -1010,7 +993,7 @@ function renderPressBoard() {
   for (const press of pressState.snapshot.presses || []) {
     const activeRun = press.activeRun;
     const canUsePress = selectedPress() === press.id;
-    const canOperate = canUsePress && selectedUser() !== '';
+    const canOperate = canUsePress;
     const card = document.createElement('article');
     card.className = 'pressCard';
     card.classList.toggle('isRunning', activeRun?.status === 'active');
@@ -1024,7 +1007,7 @@ function renderPressBoard() {
           <span>${canUsePress ? 'Dieser Arbeitsplatz' : 'Live-Status'}</span>
         </div>
         <div class="pressCardTools">
-          <strong class="pressStatus">${escapeHtml(pressStatusLabel(activeRun?.status))}</strong>
+          <strong class="pressStatus ${escapeHtml(pressStatusClass(activeRun?.status))}">${escapeHtml(pressStatusLabel(activeRun?.status))}</strong>
           <button type="button" class="historyButton" data-action="history" data-press-id="${escapeHtml(press.id)}">History</button>
         </div>
       </header>
@@ -1052,7 +1035,6 @@ function renderPressBoard() {
 
 function renderActiveRun(press, run, canOperate) {
   const disabled = canOperate ? '' : 'disabled';
-  const hostname = pressState.context.workplace?.hostname || '-';
   const resumeButton = run.status === 'paused'
     ? `<button type="button" data-action="resume" data-press-id="${escapeHtml(press.id)}" ${disabled}>Fortsetzen</button>`
     : '';
@@ -1067,9 +1049,7 @@ function renderActiveRun(press, run, canOperate) {
       <div class="runTimer" data-run-id="${escapeHtml(run.id)}">${durationLabel(runElapsedMs(run))}</div>
       <dl class="runFacts">
         <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
-        <div><dt>Pressenfuehrer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
         <div><dt>Schicht</dt><dd>${escapeHtml(run.shiftName || '-')}</dd></div>
-        <div><dt>Host</dt><dd>${escapeHtml(hostname)}</dd></div>
       </dl>
       <div class="runActions">
         ${resumeButton}
@@ -1086,7 +1066,7 @@ function renderOrderPicker(press, canUsePress, canOperate) {
   const query = pressState.orderQueries[press.id] || '';
   const showResults = canUsePress && pressState.orderResultsOpen[press.id] !== false && query.trim() !== '';
   const hint = canUsePress
-    ? 'Bitte einen Pressenfuehrer waehlen, um den Auftrag zu starten.'
+    ? 'Bitte einen Fertigungsauftrag waehlen, um den Auftrag zu starten.'
     : 'Bitte diese Presse als Arbeitsplatz waehlen.';
 
   return `
@@ -1144,7 +1124,7 @@ function renderPressHistoryRows(history) {
             <div><dt>Start</dt><dd>${escapeHtml(dateLabel(run.startedAt))}</dd></div>
             <div><dt>Ende</dt><dd>${escapeHtml(dateLabel(run.endedAt))}</dd></div>
             <div><dt>Dauer</dt><dd>${escapeHtml(durationLabel(run.elapsedMs))}</dd></div>
-            <div><dt>Pressenfuehrer</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
+            <div><dt>Arbeitsplatz</dt><dd>${escapeHtml(run.startedBy || '-')}</dd></div>
             <div><dt>Schicht</dt><dd>${escapeHtml(run.shiftName || '-')}</dd></div>
           </dl>
         </article>
@@ -1227,7 +1207,7 @@ function renderPressAdminMappings() {
     <div class="pressAdminTableWrap">
       <table class="pressAdminTable">
         <thead>
-          <tr><th>Hostname</th><th>Presse</th><th>Arbeitsplatz</th><th>Pressenfuehrer</th><th>Status</th><th></th></tr>
+          <tr><th>Hostname</th><th>Presse</th><th>Arbeitsplatz</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${pressState.adminMappings.map((mapping) => `
@@ -1235,7 +1215,6 @@ function renderPressAdminMappings() {
               <td><strong>${escapeHtml(mapping.hostname)}</strong></td>
               <td>${escapeHtml(mapping.pressLabel || mapping.pressId)}</td>
               <td>${escapeHtml(mapping.workplaceLabel || '-')}</td>
-              <td>${escapeHtml(mapping.pressOperator || '-')}</td>
               <td>${mapping.isActive ? 'Aktiv' : 'Inaktiv'}</td>
               <td>
                 <div class="pressAdminActions">
@@ -1292,10 +1271,6 @@ function renderPressAdminDialog(error = '') {
             Arbeitsplatzname
             <input type="text" name="workplaceLabel" placeholder="Arbeitsplatz Presse 1">
           </label>
-          <label>
-            Pressenfuehrer
-            <input type="text" name="pressOperator" placeholder="Max Mustermann" required>
-          </label>
           <label class="pressAdminCheck">
             <input type="checkbox" name="isActive" checked>
             Aktiv
@@ -1337,7 +1312,6 @@ function renderPressAdminDialog(error = '') {
           form.elements.hostname.value = mapping.hostname;
           form.elements.pressId.value = mapping.pressId;
           form.elements.workplaceLabel.value = mapping.workplaceLabel || '';
-          form.elements.pressOperator.value = mapping.pressOperator || '';
           form.elements.isActive.checked = Boolean(mapping.isActive);
           form.elements.hostname.focus();
         }
@@ -1373,7 +1347,7 @@ function renderPressAdminDialog(error = '') {
           hostname: form.elements.hostname.value,
           pressId: form.elements.pressId.value,
           workplaceLabel: form.elements.workplaceLabel.value,
-          pressOperator: form.elements.pressOperator.value,
+          pressOperator: '',
           isActive: form.elements.isActive.checked
         });
         renderPressAdminDialog();
@@ -1409,9 +1383,7 @@ function updatePressTimers() {
 
 async function postPressAction(action, pressId, order = null) {
   const payload = {
-    pressId,
-    pressOperator: selectedUser(),
-    user: selectedUser()
+    pressId
   };
 
   if (order) {
@@ -1434,12 +1406,6 @@ function setupPressEvents() {
       setView(button.dataset.view);
       window.location.hash = button.dataset.view;
     });
-  });
-
-  pressUserSelect?.addEventListener('change', () => {
-    pressState.selectedUser = pressUserSelect.value;
-    localStorage.setItem('scrapview.pressUser', pressState.selectedUser);
-    renderPressBoard();
   });
 
   pressWorkplaceSelect?.addEventListener('change', () => {

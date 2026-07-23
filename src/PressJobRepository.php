@@ -9,12 +9,6 @@ final class PressJobRepository
         'P4' => 'TFS04 2000-to',
     ];
 
-    private const DEMO_OPERATORS = [
-        'Pressenfuehrer 1',
-        'Pressenfuehrer 2',
-        'Pressenfuehrer 3',
-    ];
-
     private const ORDER_COLUMNS = ['AUFNR', 'ORDER_ID', 'ORDERID', 'FERTIGUNGSAUFTRAG'];
     private const MATERIAL_COLUMNS = ['MATNR', 'MATERIAL', 'MATERIAL_NUMBER', 'ARTIKEL'];
     private const DESCRIPTION_COLUMNS = ['KTEXT', 'MAKTX', 'DESCRIPTION', 'BEZEICHNUNG', 'TEXT'];
@@ -39,7 +33,6 @@ final class PressJobRepository
     {
         return [
             'presses' => $this->presses(),
-            'users' => $this->users(),
             'workplace' => $this->workplaceContext(),
         ];
     }
@@ -335,8 +328,7 @@ final class PressJobRepository
     {
         $this->assertPress($pressId);
         $this->assertWorkplaceAccess($pressId);
-        $operator = $this->normalizeOperator($operator);
-        $this->assertOperatorForPress($pressId, $operator);
+        $operator = $this->normalizeOperator($operator, $pressId);
         $shiftName = $this->currentShiftName();
         $orderId = trim((string) ($order['id'] ?? ''));
 
@@ -421,8 +413,7 @@ final class PressJobRepository
     {
         $this->assertPress($pressId);
         $this->assertWorkplaceAccess($pressId);
-        $operator = $this->normalizeOperator($operator);
-        $this->assertOperatorForPress($pressId, $operator);
+        $operator = $this->normalizeOperator($operator, $pressId);
 
         if ($this->usesFileState()) {
             $runs = $this->demoRuns();
@@ -727,13 +718,6 @@ final class PressJobRepository
         );
     }
 
-    private function users(): array
-    {
-        $configured = array_values(array_filter(array_map('trim', explode(',', (string) (getenv('PRESS_OPERATORS') ?: '')))));
-
-        return $configured !== [] ? $configured : self::DEMO_OPERATORS;
-    }
-
     private function assertWorkplaceMappingTable(): void
     {
         if (! $this->canUseWorkplaceMappings()) {
@@ -908,38 +892,21 @@ final class PressJobRepository
         }
     }
 
-    private function normalizeOperator(string $operator): string
+    private function normalizeOperator(string $operator, string $pressId): string
     {
         $operator = trim($operator);
 
-        if ($operator === '') {
-            throw new InvalidArgumentException('Bitte einen Pressenfuehrer auswaehlen.');
+        if ($operator !== '') {
+            return $operator;
         }
 
-        return $operator;
-    }
-
-    private function assertOperatorForPress(string $pressId, string $operator): void
-    {
-        if (! $this->canUseWorkplaceMappings()) {
-            return;
+        foreach ($this->workplaceAssignmentsForClient() as $assignment) {
+            if (($assignment['pressId'] ?? '') === $pressId && trim((string) ($assignment['workplaceLabel'] ?? '')) !== '') {
+                return trim((string) $assignment['workplaceLabel']);
+            }
         }
 
-        $operators = array_values(array_filter(array_map(
-            static fn (array $assignment): string => trim((string) ($assignment['pressOperator'] ?? '')),
-            array_filter(
-                $this->workplaceAssignmentsForClient(),
-                static fn (array $assignment): bool => ($assignment['pressId'] ?? '') === $pressId
-            )
-        )));
-
-        if ($operators === []) {
-            throw new RuntimeException('Fuer diese Presse ist kein Pressenfuehrer im Adminbereich hinterlegt.');
-        }
-
-        if (! in_array($operator, $operators, true)) {
-            throw new RuntimeException('Dieser Pressenfuehrer ist fuer diese Presse nicht freigegeben.');
-        }
+        return $this->clientHostname !== '' ? $this->clientHostname : 'Arbeitsplatz';
     }
 
     private function currentShiftName(): string
